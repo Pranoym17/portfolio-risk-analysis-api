@@ -90,7 +90,7 @@ def delete_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
     db.commit()
     return
 
-@app.get("/portfolios/{portfolio_id}/risk")
+@app.get("/portfolios/{portfolio_id}/risk", response_model=schemas.RiskResponse)
 def portfolio_risk(
     portfolio_id: int,
     period: str = "1y",
@@ -148,3 +148,30 @@ def portfolio_risk(
         "weights_used": dict(zip(returned_cols, weights)),
         "metrics": metrics,
     }
+@app.get("/tickers/validate")
+def validate_ticker(ticker: str, period: str = "1y"):
+    t = (ticker or "").strip().upper()
+    if not t:
+        raise HTTPException(status_code=400, detail="Ticker cannot be empty")
+
+    try:
+        prices = get_price_history([t], period=period)
+        # normalize single series -> dataframe
+        if hasattr(prices, "ndim") and prices.ndim == 1:
+            prices = prices.to_frame()
+
+        ok = prices is not None and len(prices.index) > 10
+        return {
+            "ticker": t,
+            "period": period,
+            "is_valid": bool(ok),
+            "rows_returned": int(len(prices.index)) if prices is not None else 0,
+        }
+    except Exception as e:
+        return {
+            "ticker": t,
+            "period": period,
+            "is_valid": False,
+            "rows_returned": 0,
+            "error": str(e),
+        }

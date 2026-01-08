@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 WEIGHT_TOL = 1e-6
 
@@ -49,3 +49,31 @@ class HoldingsReplace(BaseModel):
         if abs(total - 1.0) > WEIGHT_TOL:
             raise ValueError(f"Holdings weights must sum to 1.0 (got {total:.6f})")
         return holdings
+
+
+class RiskMetrics(BaseModel):
+    annual_return: float
+    volatility: float
+    sharpe_ratio: Optional[float] = None
+    value_at_risk: float
+    var_level: float
+
+    max_drawdown: float
+    worst_day: float
+
+    beta_vs_benchmark: Optional[float] = None
+    benchmark_ticker: str
+
+    covariance_matrix: Dict[str, Dict[str, float]]
+
+
+class RiskResponse(BaseModel):
+    portfolio_id: int
+    period: str
+    tickers_used: List[str]
+    tickers_dropped: List[str]
+    weights_used: Dict[str, float]
+
+    config: Dict[str, float | str]
+
+    metrics: RiskMetrics
