@@ -3,8 +3,7 @@ from sqlalchemy.orm import Session
 
 from .database import SessionLocal, engine
 from . import models
-from .services.data_loader import get_price_history
-from .services.risk_engine import compute_portfolio_metrics
+from . import schemas
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -24,54 +23,46 @@ def root():
     return {"status": "ok", "message": "Portfolio Risk API Running"}
 
 
-@app.get("/portfolio/{portfolio_id}/risk")
-def portfolio_risk(portfolio_id: int, db: Session = Depends(get_db)):
-    portfolio = (
-        db.query(models.Portfolio)
-        .filter(models.Portfolio.id == portfolio_id)
-        .first()
-    )
+@app.post("/portfolios", response_model=schemas.PortfolioOut, status_code=201)
+def create_portfolio(payload: schemas.PortfolioCreate, db: Session = Depends(get_db)):
+    portfolio = models.Portfolio(name=payload.name.strip())
+    db.add(portfolio)
+    db.commit()
+    db.refresh(portfolio)
+    return portfolio
+
+
+@app.put("/portfolios/{portfolio_id}/holdings", response_model=schemas.PortfolioOut)
+def replace_holdings(
+    portfolio_id: int,
+    payload: schemas.HoldingsReplace,
+    db: Session = Depends(get_db),
+):
+    portfolio = db.query(models.Portfolio).filter(models.Portfolio.id == portfolio_id).first()
     if not portfolio:
         raise HTTPException(status_code=404, detail="Portfolio not found")
 
-    if not portfolio.holdings:
-        raise HTTPException(status_code=400, detail="Portfolio has no holdings")
-
-   #duplicate tickers sum weights
+    # Aggregate duplicates (AAPL appears twice -> sum weights)
     ticker_to_weight = {}
-    for h in portfolio.holdings:
-        t = (h.ticker or "").strip().upper()
-        if not t:
-            continue
-        ticker_to_weight[t] = ticker_to_weight.get(t, 0.0) + float(h.weight)
+    for h in payload.holdings:
+        ticker_to_weight[h.ticker] = ticker_to_weight.get(h.ticker, 0.0) + h.weight
 
-    tickers = list(ticker_to_weight.keys())
-    if not tickers:
-        raise HTTPException(status_code=400, detail="No valid tickers found in holdings")
-
-
-    prices = get_price_history(tickers)
-
-   
-    if hasattr(prices, "to_frame") and prices.ndim == 1:
-        prices = prices.to_frame(name=tickers[0])
-
-    
-    returned_cols = [c for c in prices.columns if c in ticker_to_weight]
-    if not returned_cols:
+    # Enforce sum-to-1 again after aggregation (duplicates could break it)
+    total = sum(ticker_to_weight.values())
+    if abs(total - 1.0) > 1e-6:
         raise HTTPException(
             status_code=400,
-            detail="No price data returned for portfolio tickers (check symbols / availability)",
+            detail=f"Holdings weights must sum to 1.0 after aggregation (got {total:.6f})",
         )
 
-    prices = prices[returned_cols]
-    weights = [ticker_to_weight[c] for c in returned_cols]
+    # Replace holdings atomically:
+    # delete old -> add new -> commit
+    # (relationship has cascade delete-orphan, but we'll do explicit delete for clarity)
+    db.query(models.Holding).filter(models.Holding.portfolio_id == portfolio_id).delete()
 
+    for ticker, weight in ticker_to_weight.items():
+        db.add(models.Holding(ticker=ticker, weight=float(weight), portfolio_id=portfolio_id))
 
-    total_w = sum(weights)
-    if total_w <= 0:
-        raise HTTPException(status_code=400, detail="Total weight must be > 0")
-    weights = [w / total_w for w in weights]
-
-    Compute metrics
-    return compute_portfolio_metrics(prices, weights)
+    db.commit()
+    db.refresh(portfolio)
+    return portfolio
