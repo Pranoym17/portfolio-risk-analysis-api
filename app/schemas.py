@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Union
 
 WEIGHT_TOL = 1e-6
 
@@ -74,6 +74,7 @@ class RiskResponse(BaseModel):
     tickers_dropped: List[str]
     weights_used: Dict[str, float]
 
-    config: Dict[str, float | str]
+    
+    config: Dict[str, Union[float, str]]
 
     metrics: RiskMetrics

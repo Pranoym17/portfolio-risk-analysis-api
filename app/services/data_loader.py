@@ -3,7 +3,7 @@ import yfinance as yf
 import pandas as pd
 from typing import Iterable, Tuple
 
-# Simple in-memory cache: key -> (expires_at, dataframe)
+
 _CACHE: dict[tuple, tuple[float, pd.DataFrame]] = {}
 DEFAULT_TTL_SECONDS = 300  # 5 minutes
 
@@ -33,13 +33,12 @@ def get_price_history(
 
     data = yf.download(list(key[0]), period=period, interval=interval, auto_adjust=False)
 
-    # yfinance format: multi columns; we want Adj Close
     if isinstance(data, pd.DataFrame) and "Adj Close" in data.columns:
         prices = data["Adj Close"]
     else:
         prices = data
 
-    # Single ticker can become Series
+
     if hasattr(prices, "ndim") and prices.ndim == 1:
         prices = prices.to_frame(name=list(key[0])[0])
 
