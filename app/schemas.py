@@ -55,6 +55,7 @@ class RiskMetrics(BaseModel):
     annual_return: float
     volatility: float
     sharpe_ratio: Optional[float] = None
+    sortino_ratio: Optional[float] = None
     value_at_risk: float
     var_level: float
 

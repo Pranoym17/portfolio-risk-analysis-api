@@ -47,7 +47,13 @@ def compute_portfolio_metrics(
     # Daily portfolio return series (for drawdown / worst day)
     port_daily = (returns.values @ w)
     port_daily = pd.Series(port_daily, index=returns.index)
-
+    
+    downside = port_daily[port_daily < 0]
+    downside_std = downside.std() * np.sqrt(trading_days) if len(downside) > 0 else None
+    sortino = None
+    if downside_std and downside_std > 0:
+         sortino = (port_return - risk_free) / downside_std
+    
     worst_day = float(port_daily.min())
 
     # Max drawdown from cumulative equity curve
@@ -76,4 +82,5 @@ def compute_portfolio_metrics(
         "beta_vs_benchmark": beta,
         "benchmark_ticker": benchmark_ticker,
         "covariance_matrix": cov.to_dict(),
+        "sortino_ratio": sortino,
     }
