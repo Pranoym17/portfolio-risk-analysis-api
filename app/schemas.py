@@ -67,6 +67,16 @@ class RiskMetrics(BaseModel):
 
     covariance_matrix: Dict[str, Dict[str, float]]
 
+class RollingMetricPoint(BaseModel):
+    date: str
+    value: float
+
+
+class RollingMetrics(BaseModel):
+    window: int
+    volatility: List[RollingMetricPoint]
+    sharpe: List[RollingMetricPoint]
+    beta: List[RollingMetricPoint]
 
 class RiskResponse(BaseModel):
     portfolio_id: int
@@ -74,8 +84,6 @@ class RiskResponse(BaseModel):
     tickers_used: List[str]
     tickers_dropped: List[str]
     weights_used: Dict[str, float]
-
-    
     config: Dict[str, Union[float, str]]
-
     metrics: RiskMetrics
+    rolling: Optional[RollingMetrics] = None

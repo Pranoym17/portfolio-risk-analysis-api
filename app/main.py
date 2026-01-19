@@ -1,11 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-
+import pandas as pd
 from .database import SessionLocal, engine
 from . import models
 from . import schemas
 from .services.data_loader import get_price_history
-from .services.risk_engine import compute_portfolio_metrics
+from .services.risk_engine import compute_portfolio_metrics, compute_rolling_metrics
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -104,6 +104,7 @@ def portfolio_risk(
     trading_days: int = 252,
     return_type: str = "simple",
     benchmark: str = "SPY",
+    rolling_window: int = 30,
     db: Session = Depends(get_db),
 ):
     return_type = return_type.lower()
@@ -171,6 +172,25 @@ def portfolio_risk(
         return_type=return_type,
         benchmark_ticker=bench,
     )
+    
+    # daily returns for portfolio assets
+    returns_df = prices.pct_change().dropna()
+
+    # portfolio daily returns series: (N_days x N_assets) @ (N_assets,)
+    port_daily = pd.Series(returns_df.values @ pd.Series(weights).values, index=returns_df.index)
+
+    # benchmark daily returns series
+    benchmark_returns = None
+    if benchmark_prices is not None:
+        benchmark_returns = benchmark_prices.pct_change().dropna()
+
+    rolling_dict = compute_rolling_metrics(
+         returns=port_daily,
+         benchmark_returns=benchmark_returns,
+         risk_free=risk_free,
+          window=rolling_window,
+         trading_days=trading_days,
+     )
 
     return {
         "portfolio_id": portfolio_id,
@@ -188,6 +208,10 @@ def portfolio_risk(
             "benchmark": bench,
         },
         "metrics": metrics_dict,
+        "rolling": {
+        "window": rolling_window,
+        **rolling_dict,
+    },
     }
 
 

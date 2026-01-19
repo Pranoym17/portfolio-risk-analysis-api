@@ -84,3 +84,32 @@ def compute_portfolio_metrics(
         "covariance_matrix": cov.to_dict(),
         "sortino_ratio": sortino,
     }
+    
+def compute_rolling_metrics(
+    returns: pd.Series,
+    benchmark_returns: pd.Series | None,
+    risk_free: float,
+    window: int,
+    trading_days: int,
+):
+    rolling_vol = returns.rolling(window).std() * np.sqrt(trading_days)
+    rolling_mean = returns.rolling(window).mean() * trading_days
+    rolling_sharpe = (rolling_mean - risk_free) / rolling_vol
+
+    beta_series = None
+    if benchmark_returns is not None:
+        cov = returns.rolling(window).cov(benchmark_returns)
+        var = benchmark_returns.rolling(window).var()
+        beta_series = cov / var
+
+    def series_to_points(s: pd.Series):
+        return [
+            {"date": idx.strftime("%Y-%m-%d"), "value": float(val)}
+            for idx, val in s.dropna().items()
+        ]
+
+    return {
+        "volatility": series_to_points(rolling_vol),
+        "sharpe": series_to_points(rolling_sharpe),
+        "beta": series_to_points(beta_series) if beta_series is not None else [],
+    }
