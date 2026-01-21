@@ -6,7 +6,7 @@ from typing import Iterable
 
 _CACHE: dict[tuple, tuple[float, pd.DataFrame]] = {}
 DEFAULT_TTL_SECONDS = 300  # 5 minutes
-
+_SECTOR_CACHE: dict[str, str] = {}
 
 def _make_cache_key(tickers: Iterable[str], period: str, interval: str) -> tuple:
     tickers_sorted = tuple(sorted(set([t.strip().upper() for t in tickers if t])))
@@ -46,3 +46,21 @@ def get_price_history(
 
     _CACHE[key] = (now + ttl_seconds, prices.copy())
     return prices
+
+def get_sector(ticker: str) -> str:
+    """
+    Returns sector name for a ticker using yfinance.
+    Cached to avoid repeated calls.
+    """
+    t = ticker.strip().upper()
+    if t in _SECTOR_CACHE:
+        return _SECTOR_CACHE[t]
+
+    try:
+        info = yf.Ticker(t).info
+        sector = info.get("sector") or "Unknown"
+    except Exception:
+        sector = "Unknown"
+
+    _SECTOR_CACHE[t] = sector
+    return sector

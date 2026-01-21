@@ -94,7 +94,13 @@ class RiskAttributionItem(BaseModel):
     mrc: float                 # marginal risk contribution (to volatility)
     trc: float                 # total/component risk contribution (to volatility)
     trc_pct: float             # % contribution to total volatility
+    sector: str
 
+class SectorRiskContribution(BaseModel):
+    sector: str
+    trc: float
+    trc_pct: float
+    tickers: List[str]
 
 class RiskAttributionResponse(BaseModel):
     portfolio_id: int
@@ -105,3 +111,5 @@ class RiskAttributionResponse(BaseModel):
     tickers_dropped: List[str]
     portfolio_volatility: float
     attribution: List[RiskAttributionItem]
+    sector_attribution: List[SectorRiskContribution]
+    summary: str

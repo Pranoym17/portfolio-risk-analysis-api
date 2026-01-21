@@ -7,6 +7,8 @@ from . import schemas
 from .services.data_loader import get_price_history
 from .services.risk_engine import compute_portfolio_metrics, compute_rolling_metrics
 from .services.risk_engine import compute_risk_attribution
+from .services.data_loader import get_sector
+from .services.risk_engine import generate_risk_summary
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -246,7 +248,7 @@ def validate_ticker(ticker: str, period: str = "1y", interval: str = "1d"):
             "error": str(e),
         }
 
-        
+
 @app.get("/portfolios/{portfolio_id}/risk/attribution", response_model=schemas.RiskAttributionResponse)
 def portfolio_risk_attribution(
     portfolio_id: int,
@@ -301,8 +303,9 @@ def portfolio_risk_attribution(
     # Covariance matrix (annualized)
     returns = prices.pct_change().dropna()
     cov = returns.cov() * trading_days
-
-    attr = compute_risk_attribution(cov=cov, weights=weights, tickers=returned_cols)
+    sectors = {t: get_sector(t) for t in returned_cols}
+    attr = compute_risk_attribution(cov=cov, weights=weights, tickers=returned_cols,sectors=sectors)
+    summary = generate_risk_summary(attribution=attr["attribution"],sector_attribution=attr["sector_attribution"])
 
     return {
         "portfolio_id": portfolio_id,
@@ -313,4 +316,6 @@ def portfolio_risk_attribution(
         "tickers_dropped": dropped,
         "portfolio_volatility": attr["portfolio_volatility"],
         "attribution": attr["attribution"],
+        "sector_attribution": attr["sector_attribution"],
+        "summary": summary,
     }

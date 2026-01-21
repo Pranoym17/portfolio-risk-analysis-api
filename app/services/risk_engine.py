@@ -83,7 +83,6 @@ def compute_portfolio_metrics(
         "benchmark_ticker": benchmark_ticker,
         "covariance_matrix": cov.to_dict(),
         "sortino_ratio": sortino,
-        "rolling_window": rolling_window,
     }
 
 def compute_rolling_metrics(
@@ -119,6 +118,7 @@ def compute_risk_attribution(
     cov: pd.DataFrame,
     weights: list[float],
     tickers: list[str],
+    sectors: dict[str, str],
 ) -> dict:
 
     w = np.array(weights, dtype=float)
@@ -144,12 +144,71 @@ def compute_risk_attribution(
             "mrc": float(mrc[i]),
             "trc": float(trc[i]),
             "trc_pct": float(trc_pct[i]),
+            "sector": sectors.get(t, "Unknown")
+        })
+    attribution.sort(key=lambda x: x["trc_pct"], reverse=True)
+    sector_map: dict[str, dict] = {}
+    for item in attribution:
+        sector = sectors.get(item["ticker"], "Unknown")
+        sector_map.setdefault(sector, {"trc": 0.0, "tickers": []})
+        sector_map[sector]["trc"] += item["trc"]
+        sector_map[sector]["tickers"].append(item["ticker"])
+
+    sector_attribution = []
+    for sector, data in sector_map.items():
+        sector_attribution.append({
+            "sector": sector,
+            "trc": data["trc"],
+            "trc_pct": data["trc"] / port_vol if port_vol != 0 else 0.0,
+            "tickers": data["tickers"],
         })
 
-    # Sort by biggest risk contributor 
-    attribution.sort(key=lambda x: x["trc_pct"], reverse=True)
+    sector_attribution.sort(key=lambda x: x["trc_pct"], reverse=True)
 
     return {
         "portfolio_volatility": port_vol,
         "attribution": attribution,
+        "sector_attribution": sector_attribution,
     }
+
+def generate_risk_summary(
+        attribution: list[dict],
+        sector_attribution: list[dict],
+    ) -> str:
+    """
+    Generates a human-readable explanation of portfolio risk drivers.
+    """
+    if not attribution:
+        return "No attribution data available."
+    lines = []
+
+    # Top assets
+    top_assets = attribution[:3]
+    asset_text = ", ".join(
+        f"{a['ticker']} ({a['trc_pct']:.0%})" for a in top_assets
+    )
+    lines.append(
+        f"The portfolio’s risk is primarily driven by {asset_text}."
+    )
+
+    # Sector concentration
+    if sector_attribution:
+        top_sector = sector_attribution[0]
+        lines.append(
+            f"Sector exposure is concentrated in {top_sector['sector']}, "
+            f"which contributes {top_sector['trc_pct']:.0%} of total volatility."
+        )
+
+    # Diversification insight
+    if len(attribution) > 1:
+        max_trc = attribution[0]["trc_pct"]
+        if max_trc < 0.35:
+            lines.append(
+                "Risk is reasonably diversified, with no single asset dominating portfolio volatility."
+            )
+        else:
+            lines.append(
+                "Risk is highly concentrated in a small number of assets."
+            )
+
+    return " ".join(lines)
