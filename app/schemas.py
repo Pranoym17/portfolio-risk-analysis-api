@@ -87,3 +87,21 @@ class RiskResponse(BaseModel):
     config: Dict[str, Union[float, str]]
     metrics: RiskMetrics
     rolling: Optional[RollingMetrics] = None
+
+class RiskAttributionItem(BaseModel):
+    ticker: str
+    weight: float
+    mrc: float                 # marginal risk contribution (to volatility)
+    trc: float                 # total/component risk contribution (to volatility)
+    trc_pct: float             # % contribution to total volatility
+
+
+class RiskAttributionResponse(BaseModel):
+    portfolio_id: int
+    period: str
+    interval: str
+    trading_days: int
+    tickers_used: List[str]
+    tickers_dropped: List[str]
+    portfolio_volatility: float
+    attribution: List[RiskAttributionItem]

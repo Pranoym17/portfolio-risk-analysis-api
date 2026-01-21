@@ -83,8 +83,9 @@ def compute_portfolio_metrics(
         "benchmark_ticker": benchmark_ticker,
         "covariance_matrix": cov.to_dict(),
         "sortino_ratio": sortino,
+        "rolling_window": rolling_window,
     }
-    
+
 def compute_rolling_metrics(
     returns: pd.Series,
     benchmark_returns: pd.Series | None,
@@ -112,4 +113,43 @@ def compute_rolling_metrics(
         "volatility": series_to_points(rolling_vol),
         "sharpe": series_to_points(rolling_sharpe),
         "beta": series_to_points(beta_series) if beta_series is not None else [],
+    }
+
+def compute_risk_attribution(
+    cov: pd.DataFrame,
+    weights: list[float],
+    tickers: list[str],
+) -> dict:
+
+    w = np.array(weights, dtype=float)
+
+    # portfolio variance and vol
+    port_var = float(w.T @ cov.values @ w)
+    port_vol = float(np.sqrt(port_var))
+    if port_vol == 0:
+        # Edge case: zero vol portfolio (rare). Avoid divide-by-zero.
+        mrc = np.zeros_like(w)
+    else:
+        sigma_w = cov.values @ w
+        mrc = sigma_w / port_vol
+
+    trc = w * mrc
+    trc_pct = trc / port_vol if port_vol != 0 else np.zeros_like(w)
+
+    attribution = []
+    for i, t in enumerate(tickers):
+        attribution.append({
+            "ticker": t,
+            "weight": float(w[i]),
+            "mrc": float(mrc[i]),
+            "trc": float(trc[i]),
+            "trc_pct": float(trc_pct[i]),
+        })
+
+    # Sort by biggest risk contributor 
+    attribution.sort(key=lambda x: x["trc_pct"], reverse=True)
+
+    return {
+        "portfolio_volatility": port_vol,
+        "attribution": attribution,
     }

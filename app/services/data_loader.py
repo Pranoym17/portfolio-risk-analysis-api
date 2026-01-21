@@ -1,7 +1,7 @@
 import time
 import yfinance as yf
 import pandas as pd
-from typing import Iterable, Tuple
+from typing import Iterable
 
 
 _CACHE: dict[tuple, tuple[float, pd.DataFrame]] = {}

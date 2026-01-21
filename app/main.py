@@ -6,6 +6,7 @@ from . import models
 from . import schemas
 from .services.data_loader import get_price_history
 from .services.risk_engine import compute_portfolio_metrics, compute_rolling_metrics
+from .services.risk_engine import compute_risk_attribution
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -183,7 +184,7 @@ def portfolio_risk(
     benchmark_returns = None
     if benchmark_prices is not None:
         benchmark_returns = benchmark_prices.pct_change().dropna()
-
+        benchmark_returns = benchmark_returns.reindex(port_daily.index).dropna()
     rolling_dict = compute_rolling_metrics(
          returns=port_daily,
          benchmark_returns=benchmark_returns,
@@ -244,3 +245,72 @@ def validate_ticker(ticker: str, period: str = "1y", interval: str = "1d"):
             "rows_returned": 0,
             "error": str(e),
         }
+
+        
+@app.get("/portfolios/{portfolio_id}/risk/attribution", response_model=schemas.RiskAttributionResponse)
+def portfolio_risk_attribution(
+    portfolio_id: int,
+    period: str = "1y",
+    interval: str = "1d",
+    trading_days: int = 252,
+    db: Session = Depends(get_db),
+):
+    portfolio = db.query(models.Portfolio).filter(models.Portfolio.id == portfolio_id).first()
+    if not portfolio:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    if not portfolio.holdings:
+        raise HTTPException(status_code=400, detail="Portfolio has no holdings")
+
+    # Build ticker -> weight
+    ticker_to_weight = {}
+    for h in portfolio.holdings:
+        t = (h.ticker or "").strip().upper()
+        if not t:
+            continue
+        ticker_to_weight[t] = ticker_to_weight.get(t, 0.0) + float(h.weight)
+
+    total = sum(ticker_to_weight.values())
+    if abs(total - 1.0) > 1e-6:
+        raise HTTPException(status_code=400, detail=f"DB weights do not sum to 1 (got {total:.6f})")
+
+    tickers = list(ticker_to_weight.keys())
+
+    # Fetch prices
+    prices = get_price_history(tickers, period=period, interval=interval)
+    if hasattr(prices, "ndim") and prices.ndim == 1:
+        prices = prices.to_frame()
+
+    returned_cols = [c for c in prices.columns if c in ticker_to_weight]
+    dropped = [t for t in tickers if t not in returned_cols]
+
+    if not returned_cols:
+        raise HTTPException(status_code=400, detail="No price data returned for tickers")
+
+    prices = prices[returned_cols]
+    weights = [ticker_to_weight[c] for c in returned_cols]
+
+    # Strict: if tickers dropped → remaining weights not 1
+    wsum = sum(weights)
+    if abs(wsum - 1.0) > 1e-6:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Some tickers had no data, remaining weights sum to {wsum:.6f}. Fix holdings or tickers.",
+        )
+
+    # Covariance matrix (annualized)
+    returns = prices.pct_change().dropna()
+    cov = returns.cov() * trading_days
+
+    attr = compute_risk_attribution(cov=cov, weights=weights, tickers=returned_cols)
+
+    return {
+        "portfolio_id": portfolio_id,
+        "period": period,
+        "interval": interval,
+        "trading_days": trading_days,
+        "tickers_used": returned_cols,
+        "tickers_dropped": dropped,
+        "portfolio_volatility": attr["portfolio_volatility"],
+        "attribution": attr["attribution"],
+    }
