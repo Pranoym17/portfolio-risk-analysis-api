@@ -1,17 +1,13 @@
-"use client";
+import { SiteHeader } from "@/components/marketing/SiteHeader";
+import { SiteFooter } from "@/components/marketing/SiteFooter";
+import { LandingPage } from "@/components/marketing/LandingPage";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/components/providers/AuthProvider";
-
-export default function Home() {
-  const { token, loading } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (loading) return;
-    router.replace(token ? "/portfolios" : "/login");
-  }, [loading, router, token]);
-
-  return null;
+export default function HomePage() {
+  return (
+    <div className="marketing-shell">
+      <SiteHeader />
+      <LandingPage />
+      <SiteFooter />
+    </div>
+  );
 }

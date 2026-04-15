@@ -5,13 +5,13 @@ export function WeightSumBar({ total }: { total: number }) {
   const status = difference < 0.0001 ? "balanced" : total < 1 ? "under" : "over";
   const tone =
     status === "balanced"
-      ? "bg-[var(--teal)]"
+      ? "bg-[var(--success)]"
       : status === "under"
-      ? "bg-[var(--amber)]"
-      : "bg-[var(--red)]";
+      ? "bg-[var(--accent-3)]"
+      : "bg-[var(--danger)]";
 
   return (
-    <div className="rounded-[16px] border border-[var(--border)] bg-[var(--bg-muted)] p-4">
+    <div className="rounded-[16px] border border-[var(--line)] bg-[rgba(255,255,255,0.03)] p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--text-faint)]">Weight Discipline</div>
@@ -22,7 +22,7 @@ export function WeightSumBar({ total }: { total: number }) {
         <div className="metric-value text-right text-lg font-semibold text-[var(--text)]">{fmtPct(total, 2)}</div>
       </div>
 
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white">
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-[rgba(255,255,255,0.06)]">
         <div className={`h-full rounded-full transition-all ${tone}`} style={{ width: `${Math.min(total, 1) * 100}%` }} />
       </div>
     </div>

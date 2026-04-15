@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(payload.access_token);
     setUser(payload.user);
     setLoading(false);
-    router.push("/portfolios");
+    router.push("/dashboard");
     router.refresh();
   }
 

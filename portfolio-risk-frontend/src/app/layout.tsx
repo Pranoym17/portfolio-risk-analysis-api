@@ -1,18 +1,17 @@
 import "./globals.css";
-import { AppFrame } from "@/components/shell/AppFrame";
 import { AppProviders } from "@/components/providers/AppProviders";
 
 export const metadata = {
-  title: "Portfolio Risk Analyst Workspace",
-  description: "Premium portfolio risk analytics frontend for holdings, metrics, and attribution.",
+  title: "Axiom Portfolio Intelligence",
+  description: "Portfolio risk analysis, holdings diagnostics, benchmark comparison, and analytics workflows.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
+      <body className="app-body">
         <AppProviders>
-          <AppFrame>{children}</AppFrame>
+          {children}
         </AppProviders>
       </body>
     </html>

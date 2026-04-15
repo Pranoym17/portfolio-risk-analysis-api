@@ -8,11 +8,11 @@ export function Badge({
   ...props
 }: React.HTMLAttributes<HTMLSpanElement> & { tone?: BadgeTone }) {
   const styles = {
-    neutral: "border-[var(--border)] bg-[var(--bg-muted)] text-[var(--text-soft)]",
-    good: "border-[#b9dbd8] bg-[var(--teal-soft)] text-[var(--teal)]",
-    bad: "border-[#e4bbbb] bg-[var(--red-soft)] text-[var(--red)]",
-    accent: "border-[#bfd3e0] bg-[var(--accent-soft)] text-[var(--accent-strong)]",
-    warn: "border-[#e7d3a6] bg-[var(--amber-soft)] text-[var(--amber)]",
+    neutral: "border-[var(--line)] bg-[rgba(255,255,255,0.04)] text-[var(--text-soft)]",
+    good: "border-[rgba(88,199,152,0.18)] bg-[rgba(88,199,152,0.12)] text-[var(--success)]",
+    bad: "border-[rgba(255,143,152,0.18)] bg-[rgba(255,143,152,0.12)] text-[var(--danger)]",
+    accent: "border-[rgba(123,162,255,0.18)] bg-[rgba(123,162,255,0.12)] text-[var(--accent)]",
+    warn: "border-[rgba(255,183,111,0.18)] bg-[rgba(255,183,111,0.12)] text-[var(--accent-3)]",
   } satisfies Record<BadgeTone, string>;
 
   return (

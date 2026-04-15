@@ -41,12 +41,12 @@ export function PortfolioList({
   }
 
   return (
-    <Card className="rounded-[20px]">
+    <Card className="rounded-[24px]">
       <CardHeader>
         <div>
-          <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-faint)]">Portfolio Directory</div>
-          <CardTitle className="mt-2 text-xl tracking-[-0.03em]">Your portfolios</CardTitle>
-          <CardDescription>Browse, open, and retire user-owned portfolios.</CardDescription>
+          <div className="section-kicker text-[var(--accent)]">Portfolio Directory</div>
+          <CardTitle className="mt-2 text-2xl tracking-[-0.04em]">Your portfolios</CardTitle>
+          <CardDescription>Open the right workspace fast with a tighter list built for repeat daily use.</CardDescription>
         </div>
         <div className="w-full max-w-[240px]">
           <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name or id" />
@@ -57,7 +57,7 @@ export function PortfolioList({
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, index) => (
-              <SkeletonBlock key={index} className="h-[76px]" />
+              <SkeletonBlock key={index} className="h-[86px]" />
             ))}
           </div>
         ) : visible.length === 0 ? (
@@ -70,13 +70,18 @@ export function PortfolioList({
             {visible.map((portfolio) => (
               <div
                 key={portfolio.id}
-                className="group rounded-[18px] border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-4 transition hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-sm)]"
+                className="group rounded-[20px] border border-[var(--border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(246,250,252,0.98))] px-5 py-5 transition hover:-translate-y-[1px] hover:border-[var(--accent)]/30 hover:shadow-[var(--shadow-sm)]"
               >
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <div className="text-base font-semibold text-[var(--text)]">{portfolio.name}</div>
-                    <div className="mt-1 text-sm text-[var(--text-soft)]">
-                      Portfolio #{portfolio.id} · {portfolio.holdings.length} holdings staged
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-lg font-semibold tracking-[-0.03em] text-[var(--text)]">{portfolio.name}</div>
+                      <span className="rounded-full bg-[var(--accent-soft)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--accent-strong)]">
+                        #{portfolio.id}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-sm text-[var(--text-soft)]">
+                      {portfolio.holdings.length} holdings staged for analysis and allocation review
                     </div>
                   </div>
 
@@ -87,7 +92,7 @@ export function PortfolioList({
                     </Button>
                     <Link
                       href={`/portfolios/${portfolio.id}`}
-                      className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-[12px] border border-[var(--border)] bg-[var(--bg-muted)] px-3.5 text-sm font-medium text-[var(--text)] transition hover:bg-[var(--bg-subtle)]"
+                      className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-[14px] border border-[var(--border)] bg-[var(--bg-muted)] px-4 text-sm font-semibold text-[var(--text)] transition hover:bg-[var(--bg-subtle)]"
                     >
                       Open workspace
                       <ArrowRight size={16} />

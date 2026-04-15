@@ -3,40 +3,31 @@
 @tailwind utilities;
 
 :root {
-  --font-sans: "Aptos", "Segoe UI Variable Text", "Segoe UI", sans-serif;
-  --font-mono: "Cascadia Mono", "Consolas", monospace;
-  --bg: #f3f6f8;
-  --bg-elevated: #ffffff;
-  --bg-muted: #eef3f6;
-  --bg-subtle: #e8eef2;
-  --text: #132033;
-  --text-soft: #5e6d80;
-  --text-faint: #7f8b99;
-  --border: #d6dee6;
-  --border-strong: #bcc8d4;
-  --accent: #1f5f85;
-  --accent-strong: #154765;
-  --accent-soft: #d8e8f2;
-  --teal: #14746f;
-  --teal-soft: #d9eeec;
-  --amber: #9a6b17;
-  --amber-soft: #f3ead5;
-  --red: #a74c4c;
-  --red-soft: #f5e0e0;
-  --shadow-sm: 0 1px 2px rgba(19, 32, 51, 0.05);
-  --shadow-md: 0 12px 30px -18px rgba(19, 32, 51, 0.18);
-  --shadow-lg: 0 24px 44px -28px rgba(19, 32, 51, 0.22);
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-7: 32px;
-  --space-8: 40px;
+  --font-sans: "Aptos Display", "Aptos", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --font-mono: "Cascadia Code", "SFMono-Regular", "Consolas", monospace;
+  --bg: #09111d;
+  --bg-2: #0d1726;
+  --bg-3: #111d2e;
+  --surface: rgba(13, 23, 38, 0.88);
+  --surface-2: rgba(17, 29, 46, 0.94);
+  --surface-3: rgba(22, 37, 58, 0.98);
+  --surface-soft: rgba(119, 145, 182, 0.08);
+  --text: #f4f7fb;
+  --text-soft: #b6c2d3;
+  --text-faint: #7f91a7;
+  --line: rgba(124, 145, 172, 0.18);
+  --line-strong: rgba(145, 166, 194, 0.26);
+  --accent: #7ba2ff;
+  --accent-2: #4cc9b0;
+  --accent-3: #ffb678;
+  --danger: #ff8f98;
+  --success: #58c798;
+  --shadow-1: 0 24px 55px -34px rgba(0, 0, 0, 0.78);
+  --shadow-2: 0 40px 90px -54px rgba(0, 0, 0, 0.92);
+  --radius-sm: 14px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-xl: 30px;
 }
 
 * {
@@ -56,10 +47,9 @@ body {
   margin: 0;
   color: var(--text);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(243, 246, 248, 0.98)),
-    radial-gradient(circle at top left, rgba(31, 95, 133, 0.06), transparent 26%),
-    radial-gradient(circle at bottom right, rgba(20, 116, 111, 0.05), transparent 22%),
-    var(--bg);
+    radial-gradient(circle at 15% 10%, rgba(123, 162, 255, 0.16), transparent 26%),
+    radial-gradient(circle at 82% 12%, rgba(76, 201, 176, 0.1), transparent 20%),
+    linear-gradient(180deg, #08101b 0%, #0a1220 34%, #0a1220 100%);
   font-family: var(--font-sans), sans-serif;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -78,38 +68,147 @@ textarea {
 }
 
 ::selection {
-  background: rgba(31, 95, 133, 0.18);
+  background: rgba(123, 162, 255, 0.24);
 }
 
-.app-shell {
+.app-body {
   min-height: 100vh;
-  background-image:
-    linear-gradient(rgba(214, 222, 230, 0.32) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(214, 222, 230, 0.24) 1px, transparent 1px);
-  background-size: 120px 120px;
 }
 
-.surface {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-md);
-}
-
-.surface-muted {
-  background: rgba(238, 243, 246, 0.72);
-  border: 1px solid rgba(188, 200, 212, 0.75);
-}
-
-.surface-grid {
+.page-shell {
+  min-height: 100vh;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 252, 253, 0.92)),
-    linear-gradient(rgba(188, 200, 212, 0.18) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(188, 200, 212, 0.18) 1px, transparent 1px);
-  background-size: auto, 28px 28px, 28px 28px;
+    radial-gradient(circle at top left, rgba(123, 162, 255, 0.07), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0));
 }
 
-.hairline {
-  border-top: 1px solid rgba(188, 200, 212, 0.8);
+.analytics-grid {
+  background-image:
+    linear-gradient(rgba(124, 145, 172, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 145, 172, 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(22, 37, 58, 0.9), rgba(13, 23, 38, 0.94));
+  box-shadow: var(--shadow-1);
+  backdrop-filter: blur(22px);
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 20%),
+    radial-gradient(circle at top right, rgba(123, 162, 255, 0.08), transparent 22%);
+}
+
+.panel-muted {
+  border: 1px solid rgba(122, 143, 170, 0.14);
+  background:
+    linear-gradient(180deg, rgba(15, 25, 40, 0.78), rgba(10, 18, 30, 0.84));
+}
+
+.hero-panel {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(123, 162, 255, 0.18), transparent 24%),
+    radial-gradient(circle at 78% 16%, rgba(76, 201, 176, 0.14), transparent 20%),
+    linear-gradient(145deg, rgba(17, 29, 46, 0.96), rgba(8, 15, 27, 0.98));
+  border: 1px solid rgba(135, 155, 187, 0.18);
+  box-shadow: var(--shadow-2);
+}
+
+.hero-panel::after {
+  content: "";
+  position: absolute;
+  right: -10%;
+  bottom: -24%;
+  width: 320px;
+  height: 320px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(123, 162, 255, 0.14), transparent 68%);
+  pointer-events: none;
+}
+
+.glass-strip {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(16px);
+}
+
+.surface,
+.surface-dark,
+.surface-grid,
+.data-cell,
+.data-cell-dark,
+.table-shell {
+  border-radius: 24px;
+}
+
+.surface,
+.surface-grid,
+.data-cell {
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(18, 30, 48, 0.88), rgba(12, 22, 36, 0.94));
+  box-shadow: var(--shadow-1);
+}
+
+.surface-dark,
+.data-cell-dark {
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(15, 25, 40, 0.95), rgba(8, 15, 27, 0.98));
+  box-shadow: var(--shadow-1);
+  color: var(--text);
+}
+
+.table-shell {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.table-header {
+  background: rgba(255, 255, 255, 0.03);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.table-row {
+  transition: background-color 180ms ease, transform 180ms ease;
+}
+
+.table-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(127, 145, 167, 0.55) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(127, 145, 167, 0.45);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.section-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
 .metric-value,
@@ -121,26 +220,56 @@ textarea {
   font-family: var(--font-mono), monospace;
 }
 
-.scrollbar-thin {
-  scrollbar-width: thin;
-  scrollbar-color: #b8c6d2 transparent;
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
-.scrollbar-thin::-webkit-scrollbar {
+.focus-ring {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(123, 162, 255, 0.65), 0 0 0 6px rgba(123, 162, 255, 0.1);
+}
+
+.table-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(127, 145, 167, 0.55) transparent;
+}
+
+.table-scroll::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
-.scrollbar-thin::-webkit-scrollbar-thumb {
-  background: rgba(127, 139, 153, 0.4);
+.table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(127, 145, 167, 0.45);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
-.focus-ring {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(31, 95, 133, 0.18);
+.kpi-glow {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 40px -28px rgba(123, 162, 255, 0.45);
+}
+
+.marketing-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(123, 162, 255, 0.14), transparent 26%),
+    radial-gradient(circle at 88% 12%, rgba(76, 201, 176, 0.12), transparent 20%),
+    linear-gradient(180deg, #07111c 0%, #09111d 45%, #0a1320 100%);
+}
+
+.site-container {
+  margin-inline: auto;
+  width: min(1440px, calc(100% - 32px));
+}
+
+@media (max-width: 767px) {
+  .site-container {
+    width: min(100%, calc(100% - 20px));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

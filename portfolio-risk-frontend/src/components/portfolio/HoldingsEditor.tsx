@@ -111,27 +111,27 @@ export function HoldingsEditor({
   const totalWeight = sumWeights(rows);
 
   return (
-    <Card className="rounded-[20px]">
+    <Card className="rounded-[24px]">
       <CardHeader className="block">
-        <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-faint)]">Holdings Editor</div>
-        <CardTitle className="mt-2 text-xl tracking-[-0.03em]">Construct portfolio weights</CardTitle>
-        <CardDescription>Manage holdings precisely, validate tickers, and save only when the allocation is fully balanced.</CardDescription>
+        <div className="section-kicker text-[var(--accent)]">Holdings Editor</div>
+        <CardTitle className="mt-2 text-2xl tracking-[-0.04em]">Construct the book</CardTitle>
+        <CardDescription>Manage weights with tighter table framing, validation cues, and a denser professional editing rhythm.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         <WeightSumBar total={totalWeight} />
 
-        <div className="overflow-hidden rounded-[18px] border border-[var(--border)]">
-          <div className="grid grid-cols-[1.4fr_0.8fr_0.8fr] gap-4 border-b border-[var(--border)] bg-[var(--bg-muted)] px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-faint)]">
+        <div className="table-shell overflow-hidden rounded-[22px]">
+          <div className="table-header grid grid-cols-[1.5fr_0.8fr_0.9fr] gap-4 border-b border-[var(--border)] px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-faint)]">
             <div>Ticker</div>
             <div>Weight</div>
             <div className="text-right">Actions</div>
           </div>
 
-          <div className="scrollbar-thin max-h-[420px] overflow-auto">
+          <div className="scrollbar-thin max-h-[480px] overflow-auto">
             {rows.map((row, index) => (
               <div
                 key={`${portfolio.id}-${index}`}
-                className="grid grid-cols-1 gap-3 border-b border-[var(--border)] px-4 py-4 last:border-b-0 md:grid-cols-[1.4fr_0.8fr_0.8fr]"
+                className="table-row grid grid-cols-1 gap-4 border-b border-[var(--border)] px-5 py-5 last:border-b-0 md:grid-cols-[1.5fr_0.8fr_0.9fr]"
               >
                 <div className="space-y-2">
                   <Input
@@ -144,7 +144,7 @@ export function HoldingsEditor({
                       {row.validation.is_valid ? `Validated · ${row.validation.rows_returned} rows` : row.validation.error ?? "Invalid ticker"}
                     </Badge>
                   ) : (
-                    <span className="text-xs text-[var(--text-faint)]">Validate if you want an early data-quality check.</span>
+                    <span className="text-xs text-[var(--text-faint)]">Run validation to pre-check market data availability.</span>
                   )}
                 </div>
 
@@ -155,7 +155,7 @@ export function HoldingsEditor({
                     inputMode="decimal"
                     placeholder="0.2500"
                   />
-                  <span className="text-xs text-[var(--text-faint)]">Use decimal weights that sum to 1.00.</span>
+                  <span className="text-xs text-[var(--text-faint)]">Decimal weights must sum to 1.00.</span>
                 </div>
 
                 <div className="flex items-start justify-end gap-2">
@@ -173,14 +173,22 @@ export function HoldingsEditor({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-          <Button variant="secondary" onClick={addRow} type="button">
-            <Plus size={16} />
-            Add Holding
-          </Button>
-          <Button loading={saving} onClick={save}>
-            Save Holdings
-          </Button>
+        <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="surface-dark rounded-[22px] p-5">
+            <div className="section-kicker text-slate-400">Editing notes</div>
+            <p className="mt-3 text-sm leading-7 text-slate-300">
+              Start with 3 to 8 names, validate each ticker, then rebalance until the weight bar reaches 100%. This keeps the analytics path clean.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Button variant="secondary" onClick={addRow} type="button">
+              <Plus size={16} />
+              Add Holding
+            </Button>
+            <Button loading={saving} onClick={save}>
+              Save Holdings
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

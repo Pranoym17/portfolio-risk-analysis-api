@@ -1,15 +1,15 @@
 import { cn } from "@/lib/utils";
 
 export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("surface rounded-[18px]", className)} {...props} />;
+  return <div className={cn("panel rounded-[24px]", className)} {...props} />;
 }
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex items-start justify-between gap-4 px-5 pt-5", className)} {...props} />;
+  return <div className={cn("flex items-start justify-between gap-4 border-b border-[var(--line)] px-5 py-4", className)} {...props} />;
 }
 
 export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("text-sm font-semibold tracking-[0.01em] text-[var(--text)]", className)} {...props} />;
+  return <div className={cn("text-sm font-semibold tracking-[-0.01em] text-[var(--text)]", className)} {...props} />;
 }
 
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
@@ -17,5 +17,5 @@ export function CardDescription({ className, ...props }: React.HTMLAttributes<HT
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("px-5 pb-5 pt-4", className)} {...props} />;
+  return <div className={cn("px-5 py-4", className)} {...props} />;
 }

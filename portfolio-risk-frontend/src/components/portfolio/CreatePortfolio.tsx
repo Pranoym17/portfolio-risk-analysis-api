@@ -33,17 +33,21 @@ export function CreatePortfolio({ onCreated }: { onCreated: () => void }) {
   }
 
   return (
-    <Card className="rounded-[20px]">
+    <Card className="rounded-[24px]">
       <CardHeader className="block">
-        <div className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-faint)]">Portfolio Creation</div>
-        <CardTitle className="mt-2 text-xl tracking-[-0.03em]">Create a new portfolio shell</CardTitle>
-        <CardDescription>Start with a portfolio name, then move into holdings construction and analytics.</CardDescription>
+        <div className="section-kicker text-[var(--accent)]">Portfolio Creation</div>
+        <CardTitle className="mt-2 text-2xl tracking-[-0.04em]">Launch a new portfolio shell</CardTitle>
+        <CardDescription>Start with a name, then move straight into holdings construction, validation, and analytics.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-5">
         <label className="block space-y-2">
-          <span className="text-sm font-medium text-[var(--text)]">Portfolio name</span>
+          <span className="text-sm font-semibold text-[var(--text)]">Portfolio name</span>
           <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Global Core Equity" />
         </label>
+
+        <div className="rounded-[18px] border border-[var(--border)] bg-[var(--bg-muted)] p-4 text-sm leading-7 text-[var(--text-soft)]">
+          Good portfolio names read like real sleeves or mandates, for example <span className="font-semibold text-[var(--text)]">US Quality Compounders</span> or <span className="font-semibold text-[var(--text)]">Balanced Multi-Asset Core</span>.
+        </div>
 
         <Button className="w-full" loading={loading} onClick={submit}>
           Create Portfolio
