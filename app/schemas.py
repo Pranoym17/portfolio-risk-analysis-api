@@ -4,6 +4,37 @@ from typing import List, Optional, Dict, Union
 WEIGHT_TOL = 1e-6
 
 
+class UserSignup(BaseModel):
+    email: str = Field(..., min_length=3, max_length=320)
+    password: str = Field(..., min_length=8, max_length=256)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        email = v.strip().lower()
+        if "@" not in email or email.startswith("@") or email.endswith("@"):
+            raise ValueError("Valid email required")
+        return email
+
+
+class UserLogin(UserSignup):
+    pass
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+
+    class Config:
+        from_attributes = True
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+
+
 class HoldingIn(BaseModel):
     ticker: str = Field(..., min_length=1, max_length=20)
     weight: float = Field(..., gt=0)
@@ -33,7 +64,8 @@ class PortfolioCreate(BaseModel):
 class PortfolioOut(BaseModel):
     id: int
     name: str
-    holdings: List[HoldingOut] = []
+    user_id: Optional[int] = None
+    holdings: List[HoldingOut] = Field(default_factory=list)
 
     class Config:
         from_attributes = True

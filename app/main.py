@@ -1,19 +1,31 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 import pandas as pd
-from .database import SessionLocal, engine
+from .database import SessionLocal, engine, ensure_schema
 from . import models
 from . import schemas
+from .auth import create_access_token, decode_access_token, hash_password, verify_password
 from .services.data_loader import get_price_history
 from .services.risk_engine import compute_portfolio_metrics, compute_rolling_metrics
 from .services.risk_engine import compute_risk_attribution
 from .services.data_loader import get_sector
 from .services.risk_engine import generate_risk_summary
+from fastapi.middleware.cors import CORSMiddleware
 
 models.Base.metadata.create_all(bind=engine)
+ensure_schema()
 
 app = FastAPI(title="Portfolio Risk Analysis API")
+bearer_scheme = HTTPBearer(auto_error=False)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def get_db():
     db = SessionLocal()
@@ -23,14 +35,97 @@ def get_db():
         db.close()
 
 
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+):
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    try:
+        payload = decode_access_token(credentials.credentials)
+        user_id = int(payload["sub"])
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+    return user
+
+
+def get_owned_portfolio(db: Session, user_id: int, portfolio_id: int):
+    portfolio = (
+        db.query(models.Portfolio)
+        .filter(
+            models.Portfolio.id == portfolio_id,
+            models.Portfolio.user_id == user_id,
+        )
+        .first()
+    )
+    if not portfolio:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    return portfolio
+
+
 @app.get("/")
 def root():
     return {"status": "ok", "message": "Portfolio Risk API Running"}
 
 
+@app.post("/auth/signup", response_model=schemas.TokenResponse, status_code=201)
+def signup(payload: schemas.UserSignup, db: Session = Depends(get_db)):
+    existing = db.query(models.User).filter(models.User.email == payload.email).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    user = models.User(
+        email=payload.email,
+        password_hash=hash_password(payload.password),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "access_token": create_access_token(user.id, user.email),
+        "user": user,
+    }
+
+
+@app.post("/auth/login", response_model=schemas.TokenResponse)
+def login(payload: schemas.UserLogin, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == payload.email).first()
+    if not user or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    return {
+        "access_token": create_access_token(user.id, user.email),
+        "user": user,
+    }
+
+
+@app.get("/auth/me", response_model=schemas.UserOut)
+def me(current_user: models.User = Depends(get_current_user)):
+    return current_user
+
+
 @app.post("/portfolios", response_model=schemas.PortfolioOut, status_code=201)
-def create_portfolio(payload: schemas.PortfolioCreate, db: Session = Depends(get_db)):
-    portfolio = models.Portfolio(name=payload.name.strip())
+def create_portfolio(
+    payload: schemas.PortfolioCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    portfolio = models.Portfolio(name=payload.name.strip(), user_id=current_user.id)
     db.add(portfolio)
     db.commit()
     db.refresh(portfolio)
@@ -42,10 +137,9 @@ def replace_holdings(
     portfolio_id: int,
     payload: schemas.HoldingsReplace,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
-    portfolio = db.query(models.Portfolio).filter(models.Portfolio.id == portfolio_id).first()
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
+    portfolio = get_owned_portfolio(db, current_user.id, portfolio_id)
 
     ticker_to_weight = {}
     for h in payload.holdings:
@@ -74,24 +168,33 @@ def replace_holdings(
 
 
 @app.get("/portfolios", response_model=list[schemas.PortfolioOut])
-def list_portfolios(db: Session = Depends(get_db)):
-    return db.query(models.Portfolio).all()
+def list_portfolios(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return (
+        db.query(models.Portfolio)
+        .filter(models.Portfolio.user_id == current_user.id)
+        .all()
+    )
 
 
 @app.get("/portfolios/{portfolio_id}", response_model=schemas.PortfolioOut)
-def get_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
-    portfolio = db.query(models.Portfolio).filter(models.Portfolio.id == portfolio_id).first()
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
-    return portfolio
+def get_portfolio(
+    portfolio_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return get_owned_portfolio(db, current_user.id, portfolio_id)
 
 
 @app.delete("/portfolios/{portfolio_id}", status_code=204)
-def delete_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
-    portfolio = db.query(models.Portfolio).filter(models.Portfolio.id == portfolio_id).first()
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
-
+def delete_portfolio(
+    portfolio_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    portfolio = get_owned_portfolio(db, current_user.id, portfolio_id)
     db.delete(portfolio)
     db.commit()
     return
@@ -109,6 +212,7 @@ def portfolio_risk(
     benchmark: str = "SPY",
     rolling_window: int = 30,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
     return_type = return_type.lower()
     if return_type not in ("simple", "log"):
@@ -120,9 +224,7 @@ def portfolio_risk(
     if trading_days <= 0:
         raise HTTPException(status_code=400, detail="trading_days must be > 0")
 
-    portfolio = db.query(models.Portfolio).filter(models.Portfolio.id == portfolio_id).first()
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
+    portfolio = get_owned_portfolio(db, current_user.id, portfolio_id)
 
     if not portfolio.holdings:
         raise HTTPException(status_code=400, detail="Portfolio has no holdings")
@@ -256,10 +358,9 @@ def portfolio_risk_attribution(
     interval: str = "1d",
     trading_days: int = 252,
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
-    portfolio = db.query(models.Portfolio).filter(models.Portfolio.id == portfolio_id).first()
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
+    portfolio = get_owned_portfolio(db, current_user.id, portfolio_id)
 
     if not portfolio.holdings:
         raise HTTPException(status_code=400, detail="Portfolio has no holdings")
