@@ -170,3 +170,56 @@ class RiskAttributionResponse(BaseModel):
     attribution: List[RiskAttributionItem]
     sector_attribution: List[SectorRiskContribution]
     summary: str
+
+
+class OptimizationRequest(BaseModel):
+    objective: str = Field(default="max_sharpe")
+    period: str = Field(default="1y")
+    interval: str = Field(default="1d")
+    risk_free: float = Field(default=0.02)
+    trading_days: int = Field(default=252, gt=0)
+    max_weight: float = Field(default=0.35, gt=0.0, le=1.0)
+    filter_high_correlation: bool = Field(default=True)
+    correlation_threshold: float = Field(default=0.9, gt=0.0, lt=1.0)
+    filter_low_sharpe: bool = Field(default=False)
+    min_asset_sharpe: float = Field(default=0.0)
+    min_return_points: int = Field(default=30, ge=2)
+
+    @field_validator("objective")
+    @classmethod
+    def normalize_objective(cls, v: str) -> str:
+        value = v.strip().lower()
+        if value not in {"max_sharpe", "min_variance"}:
+            raise ValueError("objective must be 'max_sharpe' or 'min_variance'")
+        return value
+
+
+class OptimizedWeight(BaseModel):
+    ticker: str
+    weight: float
+    expected_return: float
+    volatility: float
+    standalone_sharpe: Optional[float] = None
+
+
+class OptimizationSummary(BaseModel):
+    objective: str
+    expected_return: float
+    expected_volatility: float
+    expected_sharpe: Optional[float] = None
+    max_weight_used: float
+    selected_asset_count: int
+
+
+class OptimizationResponse(BaseModel):
+    portfolio_id: int
+    period: str
+    interval: str
+    objective: str
+    tickers_considered: List[str]
+    tickers_selected: List[str]
+    tickers_dropped: List[str]
+    tickers_dropped_details: List[AnalysisAssetDrop] = Field(default_factory=list)
+    optimal_weights: List[OptimizedWeight]
+    summary: OptimizationSummary
+    covariance_matrix: Dict[str, Dict[str, float]]

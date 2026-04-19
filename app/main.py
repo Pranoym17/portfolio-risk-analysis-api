@@ -16,6 +16,7 @@ from .services.analytics import (
     normalize_ticker_weights,
 )
 from .services.data_loader import get_price_history, get_sector
+from .services.optimizer import optimize_portfolio, prepare_optimization_inputs
 from .services.risk_engine import (
     compute_concentration_summary,
     compute_portfolio_metrics,
@@ -88,6 +89,23 @@ def get_owned_portfolio(db: Session, user_id: int, portfolio_id: int):
     if not portfolio:
         raise HTTPException(status_code=404, detail="Portfolio not found")
     return portfolio
+
+
+def _ensure_full_weight_coverage(
+    ticker_to_weight: dict[str, float],
+    usable_tickers: list[str],
+    *,
+    error_prefix: str,
+) -> None:
+    covered_weight = sum(float(ticker_to_weight[ticker]) for ticker in usable_tickers)
+    if abs(covered_weight - 1.0) > 1e-6:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{error_prefix}, remaining weights sum to {covered_weight:.6f}. "
+                "Fix holdings or tickers."
+            ),
+        )
 
 
 @app.get("/")
@@ -264,6 +282,11 @@ def portfolio_risk(
     prices = universe.prices
     benchmark_prices = universe.benchmark_prices
     weights = [ticker_to_weight[c] for c in returned_cols]
+    _ensure_full_weight_coverage(
+        ticker_to_weight,
+        returned_cols,
+        error_prefix="Some tickers had no data",
+    )
 
     try:
         metrics_dict = compute_portfolio_metrics(
@@ -320,6 +343,95 @@ def portfolio_risk(
             "window": rolling_window,
             **rolling_dict,
         },
+    }
+
+
+@app.post("/portfolios/{portfolio_id}/optimize", response_model=schemas.OptimizationResponse)
+def optimize_existing_portfolio(
+    portfolio_id: int,
+    payload: schemas.OptimizationRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    portfolio = get_owned_portfolio(db, current_user.id, portfolio_id)
+    if not portfolio.holdings:
+        raise HTTPException(status_code=400, detail="Portfolio has no holdings")
+
+    ticker_to_weight = normalize_ticker_weights(portfolio.holdings)
+
+    try:
+        universe = build_analysis_universe(
+            ticker_to_weight,
+            period=payload.period,
+            interval=payload.interval,
+            minimum_price_rows=max(11, payload.min_return_points + 1),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    dropped_details = [
+        {"ticker": item.ticker, "reason": item.reason, "detail": item.detail}
+        for item in universe.dropped_assets
+    ]
+    returns = compute_returns(universe.prices, return_type="simple")
+    valid_columns, insufficient_return_details = filter_columns_by_return_history(
+        returns,
+        minimum_points=payload.min_return_points,
+    )
+    known_dropped = {item["ticker"] for item in dropped_details}
+    dropped_details.extend(
+        {"ticker": item.ticker, "reason": item.reason, "detail": item.detail}
+        for item in insufficient_return_details
+        if item.ticker not in known_dropped
+    )
+
+    if len(valid_columns) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="At least two assets with sufficient return history are required for optimization",
+        )
+
+    filtered_returns = returns[valid_columns]
+
+    try:
+        optimization_inputs = prepare_optimization_inputs(
+            filtered_returns,
+            risk_free=payload.risk_free,
+            trading_days=payload.trading_days,
+            filter_high_correlation=payload.filter_high_correlation,
+            correlation_threshold=payload.correlation_threshold,
+            filter_low_sharpe=payload.filter_low_sharpe,
+            min_asset_sharpe=payload.min_asset_sharpe,
+        )
+        optimized = optimize_portfolio(
+            optimization_inputs,
+            objective=payload.objective,
+            risk_free=payload.risk_free,
+            max_weight=payload.max_weight,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    dropped_details.extend(
+        {"ticker": item.ticker, "reason": item.reason, "detail": item.detail}
+        for item in optimization_inputs.dropped_assets
+        if item.ticker not in {entry["ticker"] for entry in dropped_details}
+    )
+
+    return {
+        "portfolio_id": portfolio_id,
+        "period": payload.period,
+        "interval": payload.interval,
+        "objective": payload.objective,
+        "tickers_considered": list(ticker_to_weight.keys()),
+        "tickers_selected": optimized["tickers_selected"],
+        "tickers_dropped": [item["ticker"] for item in dropped_details],
+        "tickers_dropped_details": dropped_details,
+        "optimal_weights": optimized["optimal_weights"],
+        "summary": optimized["summary"],
+        "covariance_matrix": optimized["covariance_matrix"],
     }
 
 
@@ -396,6 +508,11 @@ def _build_portfolio_risk_attribution_response(
     ]
     prices = universe.prices
     weights = [ticker_to_weight[c] for c in returned_cols]
+    _ensure_full_weight_coverage(
+        ticker_to_weight,
+        returned_cols,
+        error_prefix="Some tickers had no data",
+    )
 
     returns = compute_returns(prices, return_type="simple")
     if returns.empty or len(returns.index) < 2:
