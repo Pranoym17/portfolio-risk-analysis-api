@@ -9,9 +9,21 @@ _Z_MAP = {
 }
 
 def _to_returns(price_df: pd.DataFrame, return_type: str) -> pd.DataFrame:
+    clean_prices = price_df.ffill().dropna(how="all")
     if return_type == "log":
-        return np.log(price_df / price_df.shift(1)).dropna()
-    return price_df.pct_change().dropna()
+        returns = np.log(clean_prices / clean_prices.shift(1))
+    else:
+        returns = clean_prices.pct_change(fill_method=None)
+    returns = returns.replace([np.inf, -np.inf], np.nan)
+    return returns.dropna(how="all")
+
+
+def _ensure_finite_scalar(value: float | None, field_name: str) -> float | None:
+    if value is None:
+        return None
+    if not np.isfinite(value):
+        raise ValueError(f"{field_name} could not be computed from available price history")
+    return float(value)
 
 
 def compute_portfolio_metrics(
@@ -29,6 +41,8 @@ def compute_portfolio_metrics(
     Assumes weights are aligned to price_df.columns and sum to 1.
     """
     returns = _to_returns(price_df, return_type=return_type)
+    if returns.empty or len(returns.index) < 2:
+        raise ValueError("Not enough return history to compute portfolio metrics")
 
     # Annualized mean + cov
     mean_returns = returns.mean() * trading_days
@@ -36,9 +50,9 @@ def compute_portfolio_metrics(
 
     w = np.array(weights, dtype=float)
 
-    port_return = float(np.dot(w, mean_returns.values))
+    port_return = _ensure_finite_scalar(float(np.dot(w, mean_returns.values)), "annual_return")
     variance = float(w.T @ cov.values @ w)
-    volatility = float(np.sqrt(variance))
+    volatility = _ensure_finite_scalar(float(np.sqrt(variance)), "volatility")
     sharpe = (port_return - risk_free) / volatility if volatility != 0 else None
 
     z = _Z_MAP.get(round(float(var_level), 2), _Z_MAP[0.95])
@@ -54,13 +68,13 @@ def compute_portfolio_metrics(
     if downside_std and downside_std > 0:
          sortino = (port_return - risk_free) / downside_std
     
-    worst_day = float(port_daily.min())
+    worst_day = _ensure_finite_scalar(float(port_daily.min()), "worst_day")
 
     # Max drawdown from cumulative equity curve
     equity = (1.0 + port_daily).cumprod()
     peak = equity.cummax()
     drawdown = (equity / peak) - 1.0
-    max_drawdown = float(drawdown.min())
+    max_drawdown = _ensure_finite_scalar(float(drawdown.min()), "max_drawdown")
 
     beta = None
     if benchmark_prices is not None:
@@ -70,6 +84,19 @@ def compute_portfolio_metrics(
         aligned = pd.concat([port_daily.rename("PORT"), bench_ret.rename("BENCH")], axis=1).dropna()
         if len(aligned) > 5 and aligned["BENCH"].var() != 0:
             beta = float(aligned["PORT"].cov(aligned["BENCH"]) / aligned["BENCH"].var())
+
+    sharpe = _ensure_finite_scalar(sharpe, "sharpe_ratio")
+    sortino = _ensure_finite_scalar(sortino, "sortino_ratio")
+    beta = _ensure_finite_scalar(beta, "beta_vs_benchmark")
+    var_parametric = _ensure_finite_scalar(var_parametric, "value_at_risk")
+
+    covariance_matrix = {
+        row: {
+            col: float(value) if np.isfinite(value) else 0.0
+            for col, value in cols.items()
+        }
+        for row, cols in cov.to_dict().items()
+    }
 
     return {
         "annual_return": port_return,
@@ -81,7 +108,7 @@ def compute_portfolio_metrics(
         "worst_day": worst_day,
         "beta_vs_benchmark": beta,
         "benchmark_ticker": benchmark_ticker,
-        "covariance_matrix": cov.to_dict(),
+        "covariance_matrix": covariance_matrix,
         "sortino_ratio": sortino,
     }
 
@@ -92,20 +119,31 @@ def compute_rolling_metrics(
     window: int,
     trading_days: int,
 ):
-    rolling_vol = returns.rolling(window).std() * np.sqrt(trading_days)
-    rolling_mean = returns.rolling(window).mean() * trading_days
+    clean_returns = returns.replace([np.inf, -np.inf], np.nan).dropna()
+    if clean_returns.empty:
+        return {"volatility": [], "sharpe": [], "beta": []}
+
+    rolling_vol = clean_returns.rolling(window).std() * np.sqrt(trading_days)
+    rolling_mean = clean_returns.rolling(window).mean() * trading_days
     rolling_sharpe = (rolling_mean - risk_free) / rolling_vol
 
     beta_series = None
     if benchmark_returns is not None:
-        cov = returns.rolling(window).cov(benchmark_returns)
-        var = benchmark_returns.rolling(window).var()
-        beta_series = cov / var
+        clean_benchmark = benchmark_returns.replace([np.inf, -np.inf], np.nan).dropna()
+        aligned = pd.concat([clean_returns.rename("PORT"), clean_benchmark.rename("BENCH")], axis=1).dropna()
+        if not aligned.empty:
+            cov = aligned["PORT"].rolling(window).cov(aligned["BENCH"])
+            var = aligned["BENCH"].rolling(window).var()
+            beta_series = cov / var
 
     def series_to_points(s: pd.Series):
         return [
-            {"date": idx.strftime("%Y-%m-%d"), "value": float(val)}
+            {
+                "date": idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx),
+                "value": float(val),
+            }
             for idx, val in s.dropna().items()
+            if np.isfinite(val)
         ]
 
     return {
@@ -122,10 +160,14 @@ def compute_risk_attribution(
 ) -> dict:
 
     w = np.array(weights, dtype=float)
+    if cov.empty or cov.shape[0] == 0:
+        raise ValueError("Not enough return history to compute attribution")
 
     # portfolio variance and vol
     port_var = float(w.T @ cov.values @ w)
     port_vol = float(np.sqrt(port_var))
+    if not np.isfinite(port_vol):
+        raise ValueError("Portfolio volatility could not be computed from available price history")
     if port_vol == 0:
         # Edge case: zero vol portfolio (rare). Avoid divide-by-zero.
         mrc = np.zeros_like(w)
@@ -141,9 +183,9 @@ def compute_risk_attribution(
         attribution.append({
             "ticker": t,
             "weight": float(w[i]),
-            "mrc": float(mrc[i]),
-            "trc": float(trc[i]),
-            "trc_pct": float(trc_pct[i]),
+            "mrc": float(mrc[i]) if np.isfinite(mrc[i]) else 0.0,
+            "trc": float(trc[i]) if np.isfinite(trc[i]) else 0.0,
+            "trc_pct": float(trc_pct[i]) if np.isfinite(trc_pct[i]) else 0.0,
             "sector": sectors.get(t, "Unknown")
         })
     attribution.sort(key=lambda x: x["trc_pct"], reverse=True)

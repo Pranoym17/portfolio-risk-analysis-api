@@ -1,19 +1,53 @@
-import "./globals.css";
-import { AppProviders } from "@/components/providers/AppProviders";
+import type { Metadata, Viewport } from 'next'
+import { Analytics } from '@vercel/analytics/next'
+import { AppProviders } from '@/components/providers/app-providers'
+import './globals.css'
 
-export const metadata = {
-  title: "Axiom Portfolio Intelligence",
-  description: "Portfolio risk analysis, holdings diagnostics, benchmark comparison, and analytics workflows.",
-};
+export const metadata: Metadata = {
+  title: 'Portfolio Risk Analysis | Risk Terminal',
+  description: 'Portfolio Risk Analysis frontend for portfolios, holdings, rolling metrics, and benchmark-aware risk review.',
+  generator: 'v0.app',
+  keywords: ['portfolio analytics', 'risk management', 'investment analysis', 'Sharpe ratio', 'volatility'],
+  authors: [{ name: 'Portfolio Risk Analysis' }],
+  icons: {
+    icon: [
+      {
+        url: '/icon-light-32x32.png',
+        media: '(prefers-color-scheme: light)',
+      },
+      {
+        url: '/icon-dark-32x32.png',
+        media: '(prefers-color-scheme: dark)',
+      },
+      {
+        url: '/icon.svg',
+        type: 'image/svg+xml',
+      },
+    ],
+    apple: '/apple-icon.png',
+  },
+}
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#fafaf9' },
+    { media: '(prefers-color-scheme: dark)', color: '#1a1a1f' },
+  ],
+  width: 'device-width',
+  initialScale: 1,
+}
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode
+}>) {
   return (
-    <html lang="en">
-      <body className="app-body">
-        <AppProviders>
-          {children}
-        </AppProviders>
+    <html lang="en" suppressHydrationWarning>
+      <body className="font-sans antialiased bg-background">
+        <AppProviders>{children}</AppProviders>
+        {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
-  );
+  )
 }

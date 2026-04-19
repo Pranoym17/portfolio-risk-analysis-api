@@ -77,6 +77,31 @@ def get_owned_portfolio(db: Session, user_id: int, portfolio_id: int):
     return portfolio
 
 
+def _ensure_sufficient_prices(prices: pd.DataFrame, minimum_rows: int = 11):
+    if hasattr(prices, "ndim") and prices.ndim == 1:
+        prices = prices.to_frame()
+
+    if prices is None or prices.empty:
+        raise HTTPException(status_code=400, detail="No price data returned for tickers")
+
+    cleaned = prices.dropna(how="all")
+    if len(cleaned.index) < minimum_rows:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not enough price history returned to analyze this request (got {len(cleaned.index)} rows)",
+        )
+
+    return cleaned
+
+
+def _clean_returns(prices: pd.DataFrame) -> pd.DataFrame:
+    returns = prices.ffill().pct_change(fill_method=None)
+    returns = returns.replace([float("inf"), float("-inf")], pd.NA)
+    returns = returns.dropna(axis=1, how="all")
+    returns = returns.dropna(how="all")
+    return returns
+
+
 @app.get("/")
 def root():
     return {"status": "ok", "message": "Portfolio Risk API Running"}
@@ -244,10 +269,9 @@ def portfolio_risk(
     bench = (benchmark or "SPY").strip().upper()
 
     all_tickers = tickers + ([bench] if bench not in tickers else [])
-    prices_all = get_price_history(all_tickers, period=period, interval=interval)
-
-    if hasattr(prices_all, "ndim") and prices_all.ndim == 1:
-        prices_all = prices_all.to_frame()
+    prices_all = _ensure_sufficient_prices(
+        get_price_history(all_tickers, period=period, interval=interval)
+    )
 
     benchmark_prices = prices_all[bench] if bench in prices_all.columns else None
 
@@ -267,19 +291,24 @@ def portfolio_risk(
             detail=f"Some tickers had no data, remaining weights sum to {wsum:.6f}. Fix holdings or tickers.",
         )
 
-    metrics_dict = compute_portfolio_metrics(
-        price_df=prices,
-        weights=weights,
-        benchmark_prices=benchmark_prices,
-        risk_free=risk_free,
-        var_level=var_level,
-        trading_days=trading_days,
-        return_type=return_type,
-        benchmark_ticker=bench,
-    )
+    try:
+        metrics_dict = compute_portfolio_metrics(
+            price_df=prices,
+            weights=weights,
+            benchmark_prices=benchmark_prices,
+            risk_free=risk_free,
+            var_level=var_level,
+            trading_days=trading_days,
+            return_type=return_type,
+            benchmark_ticker=bench,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     
     # daily returns for portfolio assets
-    returns_df = prices.pct_change().dropna()
+    returns_df = _clean_returns(prices)
+    if returns_df.empty or len(returns_df.index) < 2:
+        raise HTTPException(status_code=400, detail="Not enough return history to compute rolling metrics")
 
     # portfolio daily returns series: (N_days x N_assets) @ (N_assets,)
     port_daily = pd.Series(returns_df.values @ pd.Series(weights).values, index=returns_df.index)
@@ -287,7 +316,7 @@ def portfolio_risk(
     # benchmark daily returns series
     benchmark_returns = None
     if benchmark_prices is not None:
-        benchmark_returns = benchmark_prices.pct_change().dropna()
+        benchmark_returns = benchmark_prices.ffill().pct_change(fill_method=None).replace([float("inf"), float("-inf")], pd.NA).dropna()
         benchmark_returns = benchmark_returns.reindex(port_daily.index).dropna()
     rolling_dict = compute_rolling_metrics(
          returns=port_daily,
@@ -332,13 +361,26 @@ def validate_ticker(ticker: str, period: str = "1y", interval: str = "1d"):
         if hasattr(prices, "ndim") and prices.ndim == 1:
             prices = prices.to_frame()
 
-        ok = prices is not None and len(prices.index) > 10
+        prices = prices.dropna(how="all") if prices is not None else prices
+        rows_returned = int(len(prices.index)) if prices is not None else 0
+        available_columns = [str(col).strip().upper() for col in prices.columns] if prices is not None else []
+        ok = (
+            prices is not None
+            and not prices.empty
+            and t in available_columns
+            and rows_returned > 10
+        )
         return {
             "ticker": t,
             "period": period,
             "interval": interval,
             "is_valid": bool(ok),
-            "rows_returned": int(len(prices.index)) if prices is not None else 0,
+            "rows_returned": rows_returned,
+            "detail": (
+                "Ticker returned enough price history for analysis"
+                if ok else
+                ("Ticker was not present in provider response" if t not in available_columns else f"Only {rows_returned} rows returned")
+            ),
         }
     except Exception as e:
         return {
@@ -380,9 +422,9 @@ def portfolio_risk_attribution(
     tickers = list(ticker_to_weight.keys())
 
     # Fetch prices
-    prices = get_price_history(tickers, period=period, interval=interval)
-    if hasattr(prices, "ndim") and prices.ndim == 1:
-        prices = prices.to_frame()
+    prices = _ensure_sufficient_prices(
+        get_price_history(tickers, period=period, interval=interval)
+    )
 
     returned_cols = [c for c in prices.columns if c in ticker_to_weight]
     dropped = [t for t in tickers if t not in returned_cols]
@@ -402,10 +444,30 @@ def portfolio_risk_attribution(
         )
 
     # Covariance matrix (annualized)
-    returns = prices.pct_change().dropna()
+    returns = _clean_returns(prices)
+    if returns.empty or len(returns.index) < 2:
+        raise HTTPException(status_code=400, detail="Not enough return history to compute attribution")
+    valid_columns = [col for col in returns.columns if returns[col].notna().sum() >= 2]
+    if not valid_columns:
+        raise HTTPException(status_code=400, detail="Not enough overlapping return history to compute attribution")
+    if len(valid_columns) != len(returned_cols):
+        filtered_weights = [ticker_to_weight[col] for col in valid_columns]
+        filtered_weight_sum = sum(filtered_weights)
+        if abs(filtered_weight_sum - 1.0) > 1e-6:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Some tickers lacked overlapping return history, remaining weights sum to {filtered_weight_sum:.6f}. Fix holdings or tickers.",
+            )
+        returned_cols = valid_columns
+        prices = prices[returned_cols]
+        weights = filtered_weights
+        returns = returns[returned_cols]
     cov = returns.cov() * trading_days
     sectors = {t: get_sector(t) for t in returned_cols}
-    attr = compute_risk_attribution(cov=cov, weights=weights, tickers=returned_cols,sectors=sectors)
+    try:
+        attr = compute_risk_attribution(cov=cov, weights=weights, tickers=returned_cols,sectors=sectors)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     summary = generate_risk_summary(attribution=attr["attribution"],sector_attribution=attr["sector_attribution"])
 
     return {

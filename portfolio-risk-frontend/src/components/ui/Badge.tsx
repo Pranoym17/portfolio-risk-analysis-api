@@ -1,24 +1,46 @@
-import { cn } from "@/lib/utils";
+import * as React from 'react'
+import { Slot } from '@radix-ui/react-slot'
+import { cva, type VariantProps } from 'class-variance-authority'
 
-type BadgeTone = "neutral" | "good" | "bad" | "accent" | "warn";
+import { cn } from '@/lib/utils'
 
-export function Badge({
+const badgeVariants = cva(
+  'inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden',
+  {
+    variants: {
+      variant: {
+        default:
+          'border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90',
+        secondary:
+          'border-transparent bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90',
+        destructive:
+          'border-transparent bg-destructive text-white [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60',
+        outline:
+          'text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+    },
+  },
+)
+
+function Badge({
   className,
-  tone = "neutral",
+  variant,
+  asChild = false,
   ...props
-}: React.HTMLAttributes<HTMLSpanElement> & { tone?: BadgeTone }) {
-  const styles = {
-    neutral: "border-[var(--line)] bg-[rgba(255,255,255,0.04)] text-[var(--text-soft)]",
-    good: "border-[rgba(88,199,152,0.18)] bg-[rgba(88,199,152,0.12)] text-[var(--success)]",
-    bad: "border-[rgba(255,143,152,0.18)] bg-[rgba(255,143,152,0.12)] text-[var(--danger)]",
-    accent: "border-[rgba(123,162,255,0.18)] bg-[rgba(123,162,255,0.12)] text-[var(--accent)]",
-    warn: "border-[rgba(255,183,111,0.18)] bg-[rgba(255,183,111,0.12)] text-[var(--accent-3)]",
-  } satisfies Record<BadgeTone, string>;
+}: React.ComponentProps<'span'> &
+  VariantProps<typeof badgeVariants> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot : 'span'
 
   return (
-    <span
-      className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.08em]", styles[tone], className)}
+    <Comp
+      data-slot="badge"
+      className={cn(badgeVariants({ variant }), className)}
       {...props}
     />
-  );
+  )
 }
+
+export { Badge, badgeVariants }

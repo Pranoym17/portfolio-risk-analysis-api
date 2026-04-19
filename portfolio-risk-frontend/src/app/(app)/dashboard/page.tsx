@@ -1,21 +1,28 @@
-"use client";
+"use client"
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { ArrowRight, Sparkles, TriangleAlert } from "lucide-react";
-import { Chart } from "@/components/analytics/Chart";
-import { ChartPanel } from "@/components/dashboard/ChartPanel";
-import { DataTable } from "@/components/dashboard/DataTable";
-import { MetricCard } from "@/components/dashboard/MetricCard";
-import { PortfolioCard } from "@/components/portfolio/PortfolioCard";
-import { Button } from "@/components/ui/Button";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StatePanel";
-import { chartPalette } from "@/lib/design-system";
-import { getAttribution, getRisk, listPortfolios } from "@/lib/api";
-import type { AttributionResponse, PortfolioOut, RiskResponse } from "@/lib/types";
-import { fmtPct, fmtRatio, getErrorMessage } from "@/lib/utils";
+import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { motion } from "framer-motion"
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  RefreshCw,
+  Shield,
+  TrendingUp,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { MetricCard } from "@/components/dashboard/metric-card"
+import { ChartPanel, LegendItem } from "@/components/dashboard/chart-panel"
+import { DataTable } from "@/components/dashboard/data-table"
+import { usePortfolioData } from "@/components/providers/portfolio-provider"
+import { getAttribution, getRisk } from "@/lib/api"
+import type { AttributionResponse, RiskResponse } from "@/lib/types"
+import { fmtPct, fmtRatio, fmtSignedPct, getErrorMessage } from "@/lib/utils"
 
-const defaultRiskConfig = {
+const defaultRiskParams = {
   period: "1y",
   interval: "1d",
   benchmark: "SPY",
@@ -24,263 +31,386 @@ const defaultRiskConfig = {
   var_level: 0.95,
   trading_days: 252,
   rolling_window: 30,
-};
+}
 
-function sample(points: Array<{ value: number }>, fallback: number) {
-  const raw = points.slice(-18).map((point) => point.value);
-  if (raw.length >= 6) return raw;
-  return Array.from({ length: 18 }, (_, index) => fallback + Math.sin(index / 2.2) * fallback * 0.08);
+function buildSparkline(points?: { value: number }[]) {
+  return points?.slice(-12).map((point) => point.value) ?? []
 }
 
 export default function DashboardPage() {
-  const [portfolios, setPortfolios] = useState<PortfolioOut[]>([]);
-  const [risk, setRisk] = useState<RiskResponse | null>(null);
-  const [attribution, setAttribution] = useState<AttributionResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { activePortfolio, activePortfolioId, refreshPortfolios, portfolios, isLoading: portfoliosLoading } = usePortfolioData()
+  const [risk, setRisk] = useState<RiskResponse | null>(null)
+  const [attribution, setAttribution] = useState<AttributionResponse | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
+    if (!activePortfolioId) {
+      setRisk(null)
+      setAttribution(null)
+      setError(null)
+      return
+    }
+
+    let cancelled = false
+
+    const load = async () => {
+      setIsLoading(true)
+      setError(null)
       try {
-        const list = await listPortfolios();
-        setPortfolios(list);
-        if (!list[0]) {
-          setRisk(null);
-          setAttribution(null);
-          return;
-        }
-        const [nextRisk, nextAttribution] = await Promise.all([
-          getRisk(list[0].id, defaultRiskConfig),
-          getAttribution(list[0].id, {
-            period: "1y",
-            interval: "1d",
-            trading_days: 252,
+        const [riskResponse, attributionResponse] = await Promise.all([
+          getRisk(activePortfolioId, defaultRiskParams),
+          getAttribution(activePortfolioId, {
+            period: defaultRiskParams.period,
+            interval: defaultRiskParams.interval,
+            trading_days: defaultRiskParams.trading_days,
           }),
-        ]);
-        setRisk(nextRisk);
-        setAttribution(nextAttribution);
-      } catch (nextError) {
-        setError(getErrorMessage(nextError, "Unable to load the dashboard workspace."));
+        ])
+        if (!cancelled) {
+          setRisk(riskResponse)
+          setAttribution(attributionResponse)
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setRisk(null)
+          setAttribution(null)
+          setError(getErrorMessage(loadError, "Unable to load dashboard metrics"))
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setIsLoading(false)
+        }
       }
     }
 
-    void load();
-  }, []);
+    void load()
 
-  const featured = portfolios[0];
-  const metrics = risk?.metrics;
-  const volatilitySeries = sample(risk?.rolling?.volatility ?? [], metrics?.volatility ?? 0.15);
-  const sharpeSeries = sample(risk?.rolling?.sharpe ?? [], metrics?.sharpe_ratio ?? 1);
-  const betaSeries = sample(risk?.rolling?.beta ?? [], metrics?.beta_vs_benchmark ?? 1);
+    return () => {
+      cancelled = true
+    }
+  }, [activePortfolioId])
 
-  const holdingsPreview = useMemo(() => featured?.holdings.slice(0, 6) ?? [], [featured]);
+  const totalWeight = useMemo(
+    () => activePortfolio?.holdings.reduce((sum, holding) => sum + holding.weight, 0) ?? 0,
+    [activePortfolio],
+  )
 
-  if (loading) {
-    return <LoadingState title="Loading dashboard..." />;
+  const topHoldings = useMemo(() => {
+    if (!activePortfolio) return []
+    return [...activePortfolio.holdings]
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 8)
+      .map((holding) => ({
+        ticker: holding.ticker,
+        weight: holding.weight,
+        contribution:
+          attribution?.attribution.find((item) => item.ticker === holding.ticker)?.trc_pct ?? null,
+        sector:
+          attribution?.attribution.find((item) => item.ticker === holding.ticker)?.sector ?? "Unclassified",
+      }))
+  }, [activePortfolio, attribution])
+
+  if (portfoliosLoading) {
+    return <div className="text-sm text-muted-foreground">Loading dashboard workspace...</div>
+  }
+
+  if (portfolios.length === 0) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center">
+        <div className="max-w-xl rounded-2xl border border-border/60 bg-card p-8 text-center">
+          <Badge variant="secondary" className="mb-4">No portfolio yet</Badge>
+          <h1 className="text-2xl font-semibold text-foreground">Create your first portfolio</h1>
+          <p className="mt-3 text-muted-foreground">
+            Your backend is ready for portfolio creation, holdings upload, ticker validation, and full risk analysis.
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <Button asChild>
+              <Link href="/portfolio">Open portfolio workspace</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/holdings">Go to holdings editor</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-5">
-      {error ? <ErrorState title="Dashboard unavailable" body={error} /> : null}
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-muted-foreground mt-1">
+            {activePortfolio?.name ?? "Select a portfolio"} overview
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => void refreshPortfolios()}>
+            <RefreshCw className="h-4 w-4" />
+            Refresh portfolios
+          </Button>
+          <Button size="sm" className="gap-2" asChild>
+            <Link href="/risk">
+              Full Analysis
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      </div>
 
-      <section className="panel hero-panel rounded-[30px] p-5 sm:p-6">
-        <div className="grid gap-5 xl:grid-cols-[0.92fr_1.08fr]">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="glass-strip rounded-full px-3 py-1.5 text-xs text-[var(--text-soft)]">Portfolio intelligence</span>
-              <span className="glass-strip rounded-full px-3 py-1.5 text-xs text-[var(--text-soft)]">Dark analytics workspace</span>
-            </div>
-            <h2 className="mt-4 max-w-2xl text-4xl font-semibold tracking-[-0.06em] text-[var(--text)]">
-              {featured ? featured.name : "Create your first portfolio to activate the dashboard"}
-            </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--text-soft)]">
-              The command center keeps live risk, benchmark context, holdings readiness, and portfolio diagnostics visible without collapsing into repetitive dashboard cards.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/portfolios/create">
-                <Button>
-                  <Sparkles size={15} />
-                  New Portfolio
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <MetricCard
+            label="Holdings"
+            value={activePortfolio?.holdings.length ?? 0}
+            change={undefined}
+            icon={<TrendingUp className="h-4 w-4" />}
+            sparkline={activePortfolio?.holdings.map((holding) => holding.weight)}
+            variant="highlight"
+          />
+        </motion.div>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <MetricCard
+            label="Sharpe Ratio"
+            value={risk ? fmtRatio(risk.metrics.sharpe_ratio) : "--"}
+            change={undefined}
+            icon={<Activity className="h-4 w-4" />}
+            sparkline={buildSparkline(risk?.rolling?.sharpe)}
+          />
+        </motion.div>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <MetricCard
+            label="Volatility"
+            value={risk ? fmtPct(risk.metrics.volatility) : "--"}
+            icon={<BarChart3 className="h-4 w-4" />}
+            sparkline={buildSparkline(risk?.rolling?.volatility)}
+          />
+        </motion.div>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <MetricCard
+            label="VaR"
+            value={risk ? fmtPct(risk.metrics.value_at_risk) : "--"}
+            icon={<Shield className="h-4 w-4" />}
+            sparkline={buildSparkline(risk?.rolling?.beta)}
+          />
+        </motion.div>
+      </div>
+
+      {!activePortfolio?.holdings.length ? (
+        <div className="rounded-2xl border border-dashed border-border/60 bg-card p-8">
+          <h2 className="text-lg font-semibold text-foreground">This portfolio has no holdings yet</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Add weights that sum to 100% in the holdings editor before requesting risk analytics.
+          </p>
+          <Button className="mt-5" asChild>
+            <Link href="/holdings">Open holdings editor</Link>
+          </Button>
+        </div>
+      ) : error ? (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-400 mt-0.5" />
+            <div>
+              <h2 className="text-base font-semibold text-foreground">Analysis needs attention</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+              <div className="mt-4 flex gap-3">
+                <Button variant="outline" asChild>
+                  <Link href="/holdings">Review holdings</Link>
                 </Button>
-              </Link>
-              {featured ? (
-                <Link href={`/portfolios/${featured.id}`}>
-                  <Button variant="secondary">
-                    Open Workspace
-                    <ArrowRight size={15} />
-                  </Button>
-                </Link>
-              ) : null}
+                <Button asChild>
+                  <Link href="/risk">Open risk workspace</Link>
+                </Button>
+              </div>
             </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <MetricCard label="Sharpe" value={fmtRatio(metrics?.sharpe_ratio)} detail="risk-adjusted return" points={sharpeSeries} tone="accent" />
-            <MetricCard label="Annual Return" value={fmtPct(metrics?.annual_return ?? Number.NaN)} detail="annualized" points={sharpeSeries} tone="good" />
-            <MetricCard label="Volatility" value={fmtPct(metrics?.volatility ?? Number.NaN)} detail="annualized" points={volatilitySeries} tone="warn" />
-            <MetricCard label="VaR" value={fmtPct(metrics?.value_at_risk ?? Number.NaN)} detail="95% confidence" points={betaSeries} tone="bad" />
           </div>
         </div>
-      </section>
-
-      {!featured ? (
-        <EmptyState
-          title="No portfolio data yet"
-          body="Create a portfolio first, then add holdings so charts, table previews, and risk diagnostics can populate this dashboard."
-          actionLabel="Create Portfolio"
-          onAction={() => {
-            window.location.href = "/portfolios/create";
-          }}
-        />
       ) : (
         <>
-          <section className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
-            <ChartPanel
-              kicker="Performance Lens"
-              title="Rolling performance and benchmark context"
-              description="A wider focal chart keeps the dashboard anchored around the portfolio story instead of flattening into equal-sized panels."
-            >
-              <div className="rounded-[22px] border border-[var(--line)] bg-[rgba(6,10,20,0.5)] p-3">
-                <Chart
-                  style={{ height: 360 }}
-                  option={{
-                    animationDuration: 650,
-                    tooltip: {
-                      trigger: "axis",
-                      backgroundColor: chartPalette.tooltipBg,
-                      borderColor: chartPalette.border,
-                      borderWidth: 1,
-                      textStyle: { color: chartPalette.tooltipText },
-                    },
-                    legend: {
-                      top: 0,
-                      right: 6,
-                      textStyle: { color: chartPalette.axis, fontSize: 11 },
-                    },
-                    grid: { top: 30, left: 48, right: 22, bottom: 38 },
-                    xAxis: {
-                      type: "category",
-                      data: risk?.rolling?.volatility.map((point) => point.date) ?? [],
-                      boundaryGap: false,
-                      axisLabel: { color: chartPalette.axis, fontSize: 10 },
-                      axisLine: { lineStyle: { color: chartPalette.border } },
-                    },
-                    yAxis: {
-                      type: "value",
-                      axisLabel: { color: chartPalette.axis, fontSize: 10 },
-                      splitLine: { lineStyle: { color: chartPalette.grid } },
-                    },
-                    series: [
-                      {
-                        name: "Volatility",
-                        type: "line",
-                        data: risk?.rolling?.volatility.map((point) => point.value) ?? [],
-                        smooth: true,
-                        showSymbol: false,
-                        lineStyle: { width: 2.5, color: chartPalette.primary },
-                        areaStyle: { color: chartPalette.areaPrimary },
-                      },
-                      {
-                        name: "Sharpe",
-                        type: "line",
-                        data: risk?.rolling?.sharpe.map((point) => point.value) ?? [],
-                        smooth: true,
-                        showSymbol: false,
-                        lineStyle: { width: 2.2, color: chartPalette.teal },
-                        areaStyle: { color: chartPalette.areaTeal },
-                      },
-                    ],
-                  }}
-                />
-              </div>
-            </ChartPanel>
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <ChartPanel
+                title="Rolling Analytics"
+                subtitle={`30-day metrics for ${activePortfolio?.name}`}
+                height="lg"
+                legend={
+                  <>
+                    <LegendItem color="hsl(var(--chart-1))" label="Volatility" value={risk ? fmtPct(risk.metrics.volatility) : "--"} />
+                    <LegendItem color="hsl(var(--chart-2))" label="Sharpe" value={risk ? fmtRatio(risk.metrics.sharpe_ratio) : "--"} />
+                    <LegendItem color="hsl(var(--chart-3))" label="Beta" value={risk ? fmtRatio(risk.metrics.beta_vs_benchmark) : "--"} />
+                  </>
+                }
+              >
+                <div className="grid h-full grid-cols-3 gap-4">
+                  {[
+                    { label: "Volatility", points: risk?.rolling?.volatility ?? [], color: "bg-chart-1/70" },
+                    { label: "Sharpe", points: risk?.rolling?.sharpe ?? [], color: "bg-chart-2/70" },
+                    { label: "Beta", points: risk?.rolling?.beta ?? [], color: "bg-chart-3/70" },
+                  ].map((series) => {
+                    const values = series.points.map((point) => point.value)
+                    const max = Math.max(...values, 1)
+                    const min = Math.min(...values, 0)
+                    const range = max - min || 1
 
-            <div className="grid gap-5">
-              <ChartPanel kicker="Portfolio" title="Featured book" description="Jump directly into the active analytics workspace.">
-                <PortfolioCard portfolio={featured} featured />
-              </ChartPanel>
-
-              <ChartPanel kicker="Signals" title="Analyst notes" description="Highlight the most important diagnostic surfaces instead of adding more generic stat boxes.">
-                <div className="grid gap-3">
-                  <div className="rounded-[20px] border border-[rgba(255,183,111,0.18)] bg-[rgba(255,183,111,0.08)] p-4">
-                    <div className="flex items-center gap-2 text-[var(--accent-3)]">
-                      <TriangleAlert size={16} />
-                      <span className="text-sm font-semibold">Allocation concentration</span>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-[var(--text-soft)]">
-                      {attribution?.sector_attribution[0]
-                        ? `${attribution.sector_attribution[0].sector} is currently the largest risk contributor.`
-                        : "Run analytics on a portfolio with holdings to surface sector attribution notes."}
-                    </p>
-                  </div>
-                  <div className="glass-strip rounded-[20px] p-4">
-                    <div className="eyebrow text-[var(--text-faint)]">Benchmark</div>
-                    <div className="mt-2 text-2xl font-semibold tracking-[-0.05em]">{metrics?.benchmark_ticker ?? "SPY"}</div>
-                    <p className="mt-2 text-sm text-[var(--text-soft)]">Current beta: {fmtRatio(metrics?.beta_vs_benchmark)}</p>
-                  </div>
+                    return (
+                      <div key={series.label} className="rounded-xl border border-border/50 bg-surface-1/40 p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                            {series.label}
+                          </p>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {series.points.at(-1)?.date?.slice(0, 10) ?? "latest"}
+                          </Badge>
+                        </div>
+                        <div className="flex h-[180px] items-end gap-1">
+                          {series.points.slice(-24).map((point, index) => {
+                            const height = ((point.value - min) / range) * 100
+                            return (
+                              <div
+                                key={`${series.label}-${index}`}
+                                className={`flex-1 rounded-t-sm ${series.color}`}
+                                style={{ height: `${Math.max(height, 8)}%` }}
+                                title={`${point.date}: ${point.value.toFixed(4)}`}
+                              />
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </ChartPanel>
             </div>
-          </section>
 
-          <section className="grid gap-5 xl:grid-cols-[0.78fr_1.22fr]">
-            <ChartPanel kicker="Allocation" title="Weight structure" description="A quick allocation read before drilling further into the holdings table.">
-              <div className="rounded-[22px] border border-[var(--line)] bg-[rgba(6,10,20,0.5)] p-3">
-                <Chart
-                  style={{ height: 300 }}
-                  option={{
-                    animationDuration: 550,
-                    tooltip: {
-                      trigger: "item",
-                      backgroundColor: chartPalette.tooltipBg,
-                      borderColor: chartPalette.border,
-                      borderWidth: 1,
-                      textStyle: { color: chartPalette.tooltipText },
-                    },
-                    series: [
-                      {
-                        type: "pie",
-                        radius: ["52%", "78%"],
-                        center: ["50%", "52%"],
-                        label: { color: chartPalette.axis, formatter: "{b}\n{d}%" },
-                        itemStyle: { borderColor: "#0d1726", borderWidth: 3 },
-                        data: (risk?.weights_used ? Object.entries(risk.weights_used) : []).map(([ticker, weight], index) => ({
-                          name: ticker,
-                          value: weight,
-                          itemStyle: {
-                            color: [chartPalette.primary, chartPalette.teal, chartPalette.amber, chartPalette.red, chartPalette.primarySoft][index % 5],
-                          },
-                        })),
-                      },
-                    ],
-                  }}
-                />
+            <div className="space-y-6">
+              <ChartPanel
+                title="Portfolio Composition"
+                subtitle="Current weights"
+                height="sm"
+                showDefaultActions={false}
+              >
+                <div className="space-y-3">
+                  {topHoldings.slice(0, 5).map((holding) => (
+                    <div key={holding.ticker}>
+                      <div className="mb-1 flex items-center justify-between text-xs">
+                        <span className="font-medium text-foreground">{holding.ticker}</span>
+                        <span className="tabular-nums text-muted-foreground">{fmtPct(holding.weight)}</span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-surface-2">
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${holding.weight * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ChartPanel>
+
+              <div className="rounded-lg border border-border/60 bg-card p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-foreground">Health Summary</h3>
+                  <Badge variant="secondary">{fmtPct(totalWeight, 1)} allocated</Badge>
+                </div>
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Benchmark</span>
+                    <span className="font-medium">{risk?.metrics.benchmark_ticker ?? defaultRiskParams.benchmark}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Tickers used</span>
+                    <span className="font-medium">{risk?.tickers_used.length ?? activePortfolio?.holdings.length ?? 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Dropped tickers</span>
+                    <span className="font-medium">{risk?.tickers_dropped.length ?? 0}</span>
+                  </div>
+                  <div className="pt-3 border-t border-border/50">
+                    <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Attribution summary</p>
+                    <p className="text-sm text-foreground">
+                      {attribution?.summary ?? "Risk attribution will appear after analysis runs successfully."}
+                    </p>
+                  </div>
+                </div>
               </div>
-            </ChartPanel>
+            </div>
+          </div>
 
-            <ChartPanel kicker="Holdings Preview" title="Selected book holdings" description="A tighter, more readable table treatment for scanning the active book.">
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-foreground">Current Holdings</h2>
+                <Button variant="ghost" size="sm" className="gap-1" asChild>
+                  <Link href="/holdings">
+                    Edit holdings
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
               <DataTable
-                rows={holdingsPreview}
-                rowKey={(row) => String(row.id)}
                 columns={[
-                  { key: "ticker", header: "Ticker", render: (row) => <span className="mono font-semibold text-[var(--text)]">{row.ticker}</span> },
-                  { key: "weight", header: "Weight", align: "right", render: (row) => <span className="mono text-[var(--text)]">{fmtPct(row.weight)}</span> },
                   {
-                    key: "status",
-                    header: "Status",
+                    key: "ticker",
+                    header: "Ticker",
+                    render: (row) => (
+                      <div>
+                        <span className="font-medium text-foreground">{String(row.ticker)}</span>
+                        <p className="text-xs text-muted-foreground">{String(row.sector)}</p>
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "weight",
+                    header: "Weight",
                     align: "right",
-                    render: () => <span className="rounded-full bg-[rgba(88,199,152,0.12)] px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-[var(--success)]">Ready</span>,
+                    render: (row) => <span className="tabular-nums">{fmtPct(Number(row.weight))}</span>,
+                  },
+                  {
+                    key: "contribution",
+                    header: "Risk Contribution",
+                    align: "right",
+                    render: (row) => (
+                      <span className="tabular-nums">
+                        {row.contribution === null ? "--" : fmtPct(Number(row.contribution))}
+                      </span>
+                    ),
                   },
                 ]}
+                data={topHoldings}
               />
-            </ChartPanel>
-          </section>
+            </div>
+
+            <div className="space-y-6">
+              <div className="rounded-lg border border-border/60 bg-card p-5">
+                <h3 className="text-sm font-semibold text-foreground mb-4">Key Risk Metrics</h3>
+                <div className="space-y-3">
+                  {[
+                    ["Annual Return", risk ? fmtSignedPct(risk.metrics.annual_return) : "--"],
+                    ["Max Drawdown", risk ? fmtPct(risk.metrics.max_drawdown) : "--"],
+                    ["Worst Day", risk ? fmtPct(risk.metrics.worst_day) : "--"],
+                    ["Beta", risk ? fmtRatio(risk.metrics.beta_vs_benchmark) : "--"],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">{label}</span>
+                      <span className="text-sm font-medium tabular-nums">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border/60 bg-card p-5">
+                <h3 className="text-sm font-semibold text-foreground mb-4">Next Steps</h3>
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <p>Use the holdings editor to rebalance weights and validate tickers before analysis.</p>
+                  <p>Open the risk page for rolling metrics, VaR, and sector attribution.</p>
+                  <p>Review dropped tickers immediately if the backend returns incomplete market data.</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </>
       )}
+
+      {isLoading && (
+        <div className="text-sm text-muted-foreground">Refreshing analytics from the backend...</div>
+      )}
     </div>
-  );
+  )
 }

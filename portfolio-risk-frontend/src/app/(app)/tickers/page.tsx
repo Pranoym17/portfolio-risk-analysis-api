@@ -1,74 +1,48 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { SearchCheck, XCircle } from "lucide-react";
-import { validateTicker } from "@/lib/api";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import type { TickerValidationResult } from "@/lib/types";
-import { EmptyState, ErrorState } from "@/components/ui/StatePanel";
-import { getErrorMessage } from "@/lib/utils";
+import { useState } from "react"
+import { Search, ShieldCheck } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 
 export default function TickersPage() {
-  const [ticker, setTicker] = useState("");
-  const [result, setResult] = useState<TickerValidationResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleValidate() {
-    if (!ticker.trim()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      setResult(await validateTicker(ticker.trim().toUpperCase()));
-    } catch (nextError) {
-      setError(getErrorMessage(nextError, "Unable to validate ticker."));
-      setResult(null);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const router = useRouter()
+  const [symbol, setSymbol] = useState("")
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-      <section className="panel hero-panel rounded-[30px] p-6">
-        <div className="eyebrow text-[var(--accent)]">Ticker Validation</div>
-        <h2 className="mt-3 text-4xl font-semibold tracking-[-0.06em]">Check a symbol before it reaches the portfolio workflow.</h2>
-        <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--text-soft)]">
-          Use validation to confirm whether market data is available, catch obvious ticker issues early, and keep the risk engine cleaner.
-        </p>
-      </section>
+    <div className="min-h-[70vh] flex items-center justify-center">
+      <div className="w-full max-w-2xl rounded-2xl border border-border/60 bg-card p-8">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+            <ShieldCheck className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">Ticker Validation</h1>
+            <p className="text-sm text-muted-foreground">
+              Check whether your backend can retrieve pricing history for a ticker before adding it to a portfolio.
+            </p>
+          </div>
+        </div>
 
-      <section className="panel rounded-[30px] p-6">
-        <div className="eyebrow text-[var(--text-faint)]">Validate Symbol</div>
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Input value={ticker} onChange={(event) => setTicker(event.target.value.toUpperCase())} placeholder="AAPL" />
-          <Button onClick={handleValidate} loading={loading}>
-            <SearchCheck size={16} />
+        <div className="mt-8 flex gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+              placeholder="Enter ticker, e.g. AAPL"
+              className="h-12 pl-9 bg-surface-1"
+            />
+          </div>
+          <Button
+            className="h-12 px-5"
+            onClick={() => router.push(`/ticker/${encodeURIComponent(symbol.trim() || "AAPL")}`)}
+          >
             Validate
           </Button>
         </div>
-
-        <div className="mt-6">
-          {error ? <ErrorState title="Validation failed" body={error} /> : null}
-          {!error && !result ? (
-            <EmptyState title="No ticker checked yet" body="Enter a symbol to see whether price history is available for analytics." />
-          ) : null}
-          {result ? (
-            <div className={`rounded-[22px] border p-5 ${result.is_valid ? "border-[rgba(88,199,152,0.18)] bg-[rgba(88,199,152,0.08)]" : "border-[rgba(255,143,152,0.18)] bg-[rgba(255,143,152,0.08)]"}`}>
-              <div className="flex items-center gap-2">
-                {result.is_valid ? <SearchCheck size={18} className="text-[var(--success)]" /> : <XCircle size={18} className="text-[var(--danger)]" />}
-                <p className="text-sm font-semibold text-[var(--text)]">{result.ticker}</p>
-              </div>
-              <p className="mt-3 text-sm leading-7 text-[var(--text-soft)]">
-                {result.is_valid
-                  ? `Validation passed with ${result.rows_returned} rows returned for the requested period and interval.`
-                  : result.error ?? "Ticker validation failed."}
-              </p>
-            </div>
-          ) : null}
-        </div>
-      </section>
+      </div>
     </div>
-  );
+  )
 }
