@@ -110,11 +110,17 @@ class RollingMetrics(BaseModel):
     sharpe: List[RollingMetricPoint]
     beta: List[RollingMetricPoint]
 
+class AnalysisAssetDrop(BaseModel):
+    ticker: str
+    reason: str
+    detail: str
+
 class RiskResponse(BaseModel):
     portfolio_id: int
     period: str
     tickers_used: List[str]
     tickers_dropped: List[str]
+    tickers_dropped_details: List[AnalysisAssetDrop] = Field(default_factory=list)
     weights_used: Dict[str, float]
     config: Dict[str, Union[float, str]]
     metrics: RiskMetrics
@@ -141,6 +147,7 @@ class RiskAttributionResponse(BaseModel):
     trading_days: int
     tickers_used: List[str]
     tickers_dropped: List[str]
+    tickers_dropped_details: List[AnalysisAssetDrop] = Field(default_factory=list)
     portfolio_volatility: float
     attribution: List[RiskAttributionItem]
     sector_attribution: List[SectorRiskContribution]

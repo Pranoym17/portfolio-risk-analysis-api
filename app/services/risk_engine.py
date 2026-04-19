@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from .analytics import compute_covariance_matrix, compute_expected_returns, compute_returns
 
 _Z_MAP = {
     0.90: 1.2816,
@@ -7,16 +8,6 @@ _Z_MAP = {
     0.97: 1.8808,
     0.99: 2.3263,
 }
-
-def _to_returns(price_df: pd.DataFrame, return_type: str) -> pd.DataFrame:
-    clean_prices = price_df.ffill().dropna(how="all")
-    if return_type == "log":
-        returns = np.log(clean_prices / clean_prices.shift(1))
-    else:
-        returns = clean_prices.pct_change(fill_method=None)
-    returns = returns.replace([np.inf, -np.inf], np.nan)
-    return returns.dropna(how="all")
-
 
 def _ensure_finite_scalar(value: float | None, field_name: str) -> float | None:
     if value is None:
@@ -40,13 +31,13 @@ def compute_portfolio_metrics(
     Computes portfolio risk metrics.
     Assumes weights are aligned to price_df.columns and sum to 1.
     """
-    returns = _to_returns(price_df, return_type=return_type)
+    returns = compute_returns(price_df, return_type=return_type)
     if returns.empty or len(returns.index) < 2:
         raise ValueError("Not enough return history to compute portfolio metrics")
 
     # Annualized mean + cov
-    mean_returns = returns.mean() * trading_days
-    cov = returns.cov() * trading_days
+    mean_returns = compute_expected_returns(returns, trading_days=trading_days)
+    cov = compute_covariance_matrix(returns, trading_days=trading_days)
 
     w = np.array(weights, dtype=float)
 
@@ -79,7 +70,7 @@ def compute_portfolio_metrics(
     beta = None
     if benchmark_prices is not None:
         bench_df = benchmark_prices.to_frame("BENCH")
-        bench_ret = _to_returns(bench_df, return_type=return_type)["BENCH"]
+        bench_ret = compute_returns(bench_df, return_type=return_type)["BENCH"]
 
         aligned = pd.concat([port_daily.rename("PORT"), bench_ret.rename("BENCH")], axis=1).dropna()
         if len(aligned) > 5 and aligned["BENCH"].var() != 0:
