@@ -140,6 +140,22 @@ class SectorRiskContribution(BaseModel):
     trc_pct: float
     tickers: List[str]
 
+class RiskConcentrationInsight(BaseModel):
+    level: str
+    code: str
+    title: str
+    detail: str
+    related_assets: List[str] = Field(default_factory=list)
+
+class RiskConcentrationSummary(BaseModel):
+    top_asset_ticker: Optional[str] = None
+    top_asset_trc_pct: float
+    top_3_assets_trc_pct: float
+    top_sector: Optional[str] = None
+    top_sector_trc_pct: float
+    diversification_score: float
+    concentration_level: str
+
 class RiskAttributionResponse(BaseModel):
     portfolio_id: int
     period: str
@@ -149,6 +165,8 @@ class RiskAttributionResponse(BaseModel):
     tickers_dropped: List[str]
     tickers_dropped_details: List[AnalysisAssetDrop] = Field(default_factory=list)
     portfolio_volatility: float
+    concentration: RiskConcentrationSummary
+    insights: List[RiskConcentrationInsight] = Field(default_factory=list)
     attribution: List[RiskAttributionItem]
     sector_attribution: List[SectorRiskContribution]
     summary: str

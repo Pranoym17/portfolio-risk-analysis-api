@@ -17,9 +17,11 @@ from .services.analytics import (
 )
 from .services.data_loader import get_price_history, get_sector
 from .services.risk_engine import (
+    compute_concentration_summary,
     compute_portfolio_metrics,
     compute_risk_attribution,
     compute_rolling_metrics,
+    generate_concentration_insights,
     generate_risk_summary,
 )
 
@@ -364,15 +366,14 @@ def validate_ticker(ticker: str, period: str = "1y", interval: str = "1d"):
         }
 
 
-@app.get("/portfolios/{portfolio_id}/risk/attribution", response_model=schemas.RiskAttributionResponse)
-def portfolio_risk_attribution(
+def _build_portfolio_risk_attribution_response(
     portfolio_id: int,
     period: str = "1y",
     interval: str = "1d",
     trading_days: int = 252,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
-):
+) -> dict:
     portfolio = get_owned_portfolio(db, current_user.id, portfolio_id)
     if not portfolio.holdings:
         raise HTTPException(status_code=400, detail="Portfolio has no holdings")
@@ -447,6 +448,14 @@ def portfolio_risk_attribution(
         attribution=attr["attribution"],
         sector_attribution=attr["sector_attribution"],
     )
+    concentration = compute_concentration_summary(
+        attribution=attr["attribution"],
+        sector_attribution=attr["sector_attribution"],
+    )
+    insights = generate_concentration_insights(
+        attribution=attr["attribution"],
+        sector_attribution=attr["sector_attribution"],
+    )
 
     return {
         "portfolio_id": portfolio_id,
@@ -457,7 +466,47 @@ def portfolio_risk_attribution(
         "tickers_dropped": dropped,
         "tickers_dropped_details": dropped_details,
         "portfolio_volatility": attr["portfolio_volatility"],
+        "concentration": concentration,
+        "insights": insights,
         "attribution": attr["attribution"],
         "sector_attribution": attr["sector_attribution"],
         "summary": summary,
     }
+
+
+@app.get("/portfolios/{portfolio_id}/risk/attribution", response_model=schemas.RiskAttributionResponse)
+def portfolio_risk_attribution(
+    portfolio_id: int,
+    period: str = "1y",
+    interval: str = "1d",
+    trading_days: int = 252,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return _build_portfolio_risk_attribution_response(
+        portfolio_id=portfolio_id,
+        period=period,
+        interval=interval,
+        trading_days=trading_days,
+        db=db,
+        current_user=current_user,
+    )
+
+
+@app.get("/portfolios/{portfolio_id}/risk/contributions", response_model=schemas.RiskAttributionResponse)
+def portfolio_risk_contributions(
+    portfolio_id: int,
+    period: str = "1y",
+    interval: str = "1d",
+    trading_days: int = 252,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return _build_portfolio_risk_attribution_response(
+        portfolio_id=portfolio_id,
+        period=period,
+        interval=interval,
+        trading_days=trading_days,
+        db=db,
+        current_user=current_user,
+    )
