@@ -223,3 +223,57 @@ class OptimizationResponse(BaseModel):
     optimal_weights: List[OptimizedWeight]
     summary: OptimizationSummary
     covariance_matrix: Dict[str, Dict[str, float]]
+
+
+class TargetWeight(BaseModel):
+    ticker: str = Field(..., min_length=1, max_length=20)
+    weight: float = Field(..., ge=0.0)
+
+    @field_validator("ticker")
+    @classmethod
+    def normalize_target_ticker(cls, v: str) -> str:
+        ticker = v.strip().upper()
+        if not ticker:
+            raise ValueError("Ticker cannot be empty")
+        return ticker
+
+
+class RebalanceRequest(BaseModel):
+    target_weights: List[TargetWeight] = Field(..., min_length=1)
+    drift_threshold: float = Field(default=0.05, gt=0.0, le=1.0)
+    portfolio_value: Optional[float] = Field(default=None, gt=0.0)
+    minimum_trade_value: float = Field(default=0.0, ge=0.0)
+
+    @field_validator("target_weights")
+    @classmethod
+    def validate_target_weight_sum(cls, weights: List[TargetWeight]) -> List[TargetWeight]:
+        ticker_to_weight: Dict[str, float] = {}
+        for item in weights:
+            ticker_to_weight[item.ticker] = ticker_to_weight.get(item.ticker, 0.0) + item.weight
+        total = sum(ticker_to_weight.values())
+        if abs(total - 1.0) > WEIGHT_TOL:
+            raise ValueError(f"Target weights must sum to 1.0 (got {total:.6f})")
+        return weights
+
+
+class RebalanceAssetDrift(BaseModel):
+    ticker: str
+    current_weight: float
+    target_weight: float
+    drift: float
+    abs_drift: float
+    action: str
+    trade_value: Optional[float] = None
+
+
+class RebalanceResponse(BaseModel):
+    portfolio_id: int
+    rebalance_needed: bool
+    drift_threshold: float
+    max_abs_drift: float
+    turnover_estimate: float
+    portfolio_value: Optional[float] = None
+    current_weights: Dict[str, float]
+    target_weights: Dict[str, float]
+    trades: List[RebalanceAssetDrift]
+    summary: str

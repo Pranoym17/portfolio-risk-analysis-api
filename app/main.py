@@ -17,6 +17,7 @@ from .services.analytics import (
 )
 from .services.data_loader import get_price_history, get_sector
 from .services.optimizer import optimize_portfolio, prepare_optimization_inputs
+from .services.rebalancer import aggregate_weights, build_rebalance_recommendation
 from .services.risk_engine import (
     compute_concentration_summary,
     compute_portfolio_metrics,
@@ -432,6 +433,34 @@ def optimize_existing_portfolio(
         "optimal_weights": optimized["optimal_weights"],
         "summary": optimized["summary"],
         "covariance_matrix": optimized["covariance_matrix"],
+    }
+
+
+@app.post("/portfolios/{portfolio_id}/rebalance-check", response_model=schemas.RebalanceResponse)
+def rebalance_check(
+    portfolio_id: int,
+    payload: schemas.RebalanceRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    portfolio = get_owned_portfolio(db, current_user.id, portfolio_id)
+    if not portfolio.holdings:
+        raise HTTPException(status_code=400, detail="Portfolio has no holdings")
+
+    current_weights = normalize_ticker_weights(portfolio.holdings)
+    target_weights = aggregate_weights(payload.target_weights)
+
+    recommendation = build_rebalance_recommendation(
+        current_weights=current_weights,
+        target_weights=target_weights,
+        drift_threshold=payload.drift_threshold,
+        portfolio_value=payload.portfolio_value,
+        minimum_trade_value=payload.minimum_trade_value,
+    )
+
+    return {
+        "portfolio_id": portfolio_id,
+        **recommendation,
     }
 
 
