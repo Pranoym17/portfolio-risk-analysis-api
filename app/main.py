@@ -10,6 +10,7 @@ from .database import SessionLocal, engine, ensure_schema
 from .services.analytics import (
     build_analysis_universe,
     clean_prices,
+    compute_correlation_matrix,
     compute_covariance_matrix,
     compute_returns,
     filter_columns_by_return_history,
@@ -18,6 +19,7 @@ from .services.analytics import (
 from .services.data_loader import get_price_history, get_sector
 from .services.optimizer import optimize_portfolio, prepare_optimization_inputs
 from .services.rebalancer import aggregate_weights, build_rebalance_recommendation
+from .services.recommendations import build_portfolio_recommendations
 from .services.risk_engine import (
     compute_concentration_summary,
     compute_portfolio_metrics,
@@ -461,6 +463,110 @@ def rebalance_check(
     return {
         "portfolio_id": portfolio_id,
         **recommendation,
+    }
+
+
+@app.post("/portfolios/{portfolio_id}/recommendations", response_model=schemas.RecommendationsResponse)
+def portfolio_recommendations(
+    portfolio_id: int,
+    payload: schemas.RecommendationsRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    portfolio = get_owned_portfolio(db, current_user.id, portfolio_id)
+    if not portfolio.holdings:
+        raise HTTPException(status_code=400, detail="Portfolio has no holdings")
+
+    current_weights = normalize_ticker_weights(portfolio.holdings)
+    try:
+        universe = build_analysis_universe(
+            current_weights,
+            period=payload.period,
+            interval=payload.interval,
+            minimum_price_rows=max(11, payload.min_return_points + 1),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    returned_cols = universe.usable_tickers
+    _ensure_full_weight_coverage(
+        current_weights,
+        returned_cols,
+        error_prefix="Some tickers had no data",
+    )
+
+    returns = compute_returns(universe.prices, return_type="simple")
+    valid_columns, _ = filter_columns_by_return_history(
+        returns,
+        minimum_points=payload.min_return_points,
+    )
+    if len(valid_columns) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="At least two assets with sufficient return history are required for recommendations",
+        )
+
+    returns = returns[valid_columns]
+    weights = [current_weights[ticker] for ticker in valid_columns]
+    cov = compute_covariance_matrix(returns, trading_days=payload.trading_days)
+    sectors = {ticker: get_sector(ticker) for ticker in valid_columns}
+
+    try:
+        attr = compute_risk_attribution(
+            cov=cov,
+            weights=weights,
+            tickers=valid_columns,
+            sectors=sectors,
+        )
+        optimization_inputs = prepare_optimization_inputs(
+            returns,
+            risk_free=payload.risk_free,
+            trading_days=payload.trading_days,
+            filter_high_correlation=True,
+            correlation_threshold=payload.correlation_threshold,
+            filter_low_sharpe=False,
+            min_asset_sharpe=0.0,
+        )
+        optimized = optimize_portfolio(
+            optimization_inputs,
+            objective="max_sharpe",
+            risk_free=payload.risk_free,
+            max_weight=payload.max_weight,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    target_weights = {
+        item["ticker"]: item["weight"]
+        for item in optimized["optimal_weights"]
+    }
+    rebalance_result = build_rebalance_recommendation(
+        current_weights=current_weights,
+        target_weights=target_weights,
+        drift_threshold=payload.drift_threshold,
+    )
+    concentration = compute_concentration_summary(
+        attribution=attr["attribution"],
+        sector_attribution=attr["sector_attribution"],
+    )
+    recommendation_result = build_portfolio_recommendations(
+        current_weights=current_weights,
+        risk_attribution=attr["attribution"],
+        concentration=concentration,
+        correlation=compute_correlation_matrix(returns),
+        optimized_weights=optimized["optimal_weights"],
+        optimization_summary=optimized["summary"],
+        rebalance_result=rebalance_result,
+        correlation_threshold=payload.correlation_threshold,
+    )
+
+    return {
+        "portfolio_id": portfolio_id,
+        "period": payload.period,
+        "interval": payload.interval,
+        **recommendation_result,
     }
 
 

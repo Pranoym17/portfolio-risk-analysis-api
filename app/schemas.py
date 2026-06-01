@@ -277,3 +277,31 @@ class RebalanceResponse(BaseModel):
     target_weights: Dict[str, float]
     trades: List[RebalanceAssetDrift]
     summary: str
+
+
+class RecommendationsRequest(BaseModel):
+    period: str = Field(default="1y")
+    interval: str = Field(default="1d")
+    risk_free: float = Field(default=0.02)
+    trading_days: int = Field(default=252, gt=0)
+    max_weight: float = Field(default=0.35, gt=0.0, le=1.0)
+    drift_threshold: float = Field(default=0.05, gt=0.0, le=1.0)
+    correlation_threshold: float = Field(default=0.9, gt=0.0, lt=1.0)
+    min_return_points: int = Field(default=30, ge=2)
+
+
+class RecommendationItem(BaseModel):
+    type: str
+    severity: str
+    title: str
+    explanation: str
+    suggested_action: str
+    related_assets: List[str] = Field(default_factory=list)
+
+
+class RecommendationsResponse(BaseModel):
+    portfolio_id: int
+    period: str
+    interval: str
+    recommendations: List[RecommendationItem]
+    diagnostics: Dict[str, Union[float, int, str, bool, None]]
